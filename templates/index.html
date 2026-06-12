@@ -1,0 +1,307 @@
+<style>
+.help-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.help-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3f51b5;
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+  top: -3px;
+}
+.ui-input-text {
+  width: fit-content;
+
+#debug_verbose, #root_topic, #external_recovery_topic {
+  width: 350px;
+}
+</style>
+
+<form method="post" action="index.cgi">
+  <div style="display:flex; align-items:center; justify-content:center; width:100%; margin-bottom:1em; gap:10px; flex-wrap:wrap;">
+    <span id="servicestate">Status wird geladen…</span>
+
+    <a style="width:60px;"
+       href="javascript:restartService();"
+       id="btnrestart"
+       data-role="button"
+       data-inline="true"
+       data-icon="refresh"
+       data-mini="true"
+       data-transition="flow">Restart</a>
+
+    <a style="width:60px;"
+       href="javascript:stopService();"
+       id="btnstop"
+       data-role="button"
+       data-inline="true"
+       data-icon="delete"
+       data-mini="true"
+       data-transition="flow">Stop</a>
+
+    <a style="width:110px;"
+       id="btnshwlog"
+       data-icon="info"
+       data-role="button"
+       data-mini="true"
+       target="log"
+       href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template">Log anzeigen</a>
+  </div>
+
+  <div style="margin-bottom:1em; color:#006400;"><TMPL_VAR NOTICE></div>
+
+<hr>
+<h1>VLX2MQTT KLF200 Bridge</h1>
+
+<!-- Grundkonfiguration: 2 Spalten -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
+
+  <div>
+    <span class="help-inline">
+      <label for="klf_host"><strong>KLF Host:</strong></label>
+      <span class="help-tip" title="Hostname oder IP-Adresse der VELUX KLF200 / Homecontrol IO.">?</span>
+    </span>
+    <input id="klf_host" type="text" name="klf_host" value="<TMPL_VAR klf_host>">
+  </div>
+
+  <div>
+    <span class="help-inline">
+      <label for="klf_pw"><strong>KLF Passwort:</strong></label>
+      <span class="help-tip" title="WiFi Passwort der VELUX KLF200.">?</span>
+    </span>
+    <input id="klf_pw" type="text" name="klf_pw" value="<TMPL_VAR klf_pw>">
+  </div>
+
+  <div>
+    <span class="help-inline">
+      <label for="mqtt_host"><strong>MQTT Host:</strong></label>
+      <span class="help-tip" title="Hostname oder IP-Adresse des MQTT-Brokers.">?</span>
+    </span>
+    <input id="mqtt_host" type="text" name="mqtt_host" value="<TMPL_VAR mqtt_host>">
+  </div>
+
+  <div>
+    <span class="help-inline">
+      <label for="mqtt_port"><strong>MQTT Port:</strong></label>
+      <span class="help-tip" title="Port des MQTT-Brokers, normalerweise 1883.">?</span>
+    </span>
+    <input id="mqtt_port" type="text" name="mqtt_port" value="<TMPL_VAR mqtt_port>">
+  </div>
+
+  <div>
+    <span class="help-inline">
+      <label for="mqtt_user"><strong>MQTT User:</strong></label>
+      <span class="help-tip" title="Benutzername für die Anmeldung am MQTT-Broker.">?</span>
+    </span>
+    <input id="mqtt_user" type="text" name="mqtt_user" value="<TMPL_VAR mqtt_user>">
+  </div>
+
+  <div>
+    <span class="help-inline">
+      <label for="mqtt_pw"><strong>MQTT Passwort:</strong></label>
+      <span class="help-tip" title="Passwort für die Anmeldung am MQTT-Broker.">?</span>
+    </span>
+    <input id="mqtt_pw" type="text" name="mqtt_pw" value="<TMPL_VAR mqtt_pw>">
+  </div>
+
+</div>
+
+<br>
+
+<!-- Erweiterte Einstellungen -->
+<fieldset style="border:1px solid #ddd; padding:10px; margin:0 0 1em 0;">
+  <legend style="font-weight:bold;">Erweiterte Einstellungen</legend>
+
+  <!-- Root Topic bleibt volle Breite -->
+  <p>
+    <span class="help-inline">
+      <label for="root_topic"><strong>Root Topic:</strong></label>
+      <span class="help-tip" title="Oberstes MQTT-Topic des Plugins, z. B. vlx2mqtt.">?</span>
+    </span>
+    <input id="root_topic" type="text" name="root_topic" value="<TMPL_VAR root_topic>">
+  </p>
+
+  <!-- 2 Spalten für die restlichen Felder -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
+
+    <div>
+      <span class="help-inline">
+        <label for="initial_delay"><strong>Initial Delay (s):</strong></label>
+        <span class="help-tip" title="Wartezeit nach dem Start des Dienstes, bevor der erste Snapshot / Initialstatus veröffentlicht wird.">?</span>
+      </span>
+      <input id="initial_delay" type="text" name="initial_delay" value="<TMPL_VAR initial_delay>" style="width:80px;">
+    </div>
+
+    <div>
+      <span class="help-inline">
+        <label for="connect_timeout"><strong>Connect Timeout (s):</strong></label>
+        <span class="help-tip" title="Maximale Wartezeit für den Verbindungsaufbau zur KLF200.">?</span>
+      </span>
+      <input id="connect_timeout" type="text" name="connect_timeout" value="<TMPL_VAR connect_timeout>" style="width:80px;">
+    </div>
+
+    <div>
+      <span class="help-inline">
+        <label for="moving_timeout"><strong>Moving Timeout (s):</strong></label>
+        <span class="help-tip" title="Watchdog-Zeit für eine laufende Bewegung.">?</span>
+      </span>
+      <input id="moving_timeout" type="text" name="moving_timeout" value="<TMPL_VAR moving_timeout>" style="width:80px;">
+    </div>
+
+    <div>
+      <span class="help-inline">
+        <label for="backoff_max"><strong>Backoff Max (s):</strong></label>
+        <span class="help-tip" title="Maximale Wartezeit zwischen zwei Wiederverbindungsversuchen zur KLF200.">?</span>
+      </span>
+      <input id="backoff_max" type="text" name="backoff_max" value="<TMPL_VAR backoff_max>" style="width:80px;">
+    </div>
+
+  </div>
+
+  <p>
+    <span class="help-inline">
+      <label for="debug_verbose">
+        <input id="debug_verbose" type="checkbox" name="debug_verbose" value="1" <TMPL_VAR debug_verbose_checked>>
+        <strong>Verbose Logging</strong>
+      </label>
+      <span class="help-tip" title="Aktiviert ausführliche Debug-Meldungen im Plugin-Log.">?</span>
+    </span>
+  </p>
+
+  <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
+</fieldset>
+
+<!-- Recovery -->
+<fieldset style="border:1px solid #ddd; padding:10px; margin:0 0 1em 0;">
+  <legend style="font-weight:bold;">Recovery / Power-Cycle</legend>
+
+  <p>
+    <span class="help-inline">
+      <label for="external_recovery_enabled">
+        <input id="external_recovery_enabled" type="checkbox" name="external_recovery_enabled" value="1" <TMPL_VAR external_recovery_enabled_checked>>
+        <strong>Externe Recovery aktivieren</strong>
+      </label>
+      <span class="help-tip" title="Fordert bei wiederholten Fehlern einen externen Power-Cycle an.">?</span>
+    </span>
+  </p>
+
+    <div>
+      <span class="help-inline">
+        <label for="external_recovery_topic"><strong>Recovery Topic:</strong></label>
+        <span class="help-tip" title="MQTT-Topic für externen Power-Cycle.">?</span>
+      </span>
+      <input id="external_recovery_topic" type="text" name="external_recovery_topic" value="<TMPL_VAR external_recovery_topic>">
+    </div>
+
+  <!-- 2 Spalten für alle Recovery-Felder -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
+
+    <div>
+      <span class="help-inline">
+        <label for="external_recovery_threshold"><strong>Recovery Threshold:</strong></label>
+        <span class="help-tip" title="Anzahl Fehler bis Recovery ausgelöst wird.">?</span>
+      </span>
+      <input id="external_recovery_threshold" type="text" name="external_recovery_threshold" value="<TMPL_VAR external_recovery_threshold>" style="width:80px;">
+    </div>
+
+    <div>
+      <span class="help-inline">
+        <label for="external_recovery_cooldown"><strong>Recovery Cooldown (s):</strong></label>
+        <span class="help-tip" title="Mindestabstand zwischen Recovery-Aktionen.">?</span>
+      </span>
+      <input id="external_recovery_cooldown" type="text" name="external_recovery_cooldown" value="<TMPL_VAR external_recovery_cooldown>" style="width:80px;">
+    </div>
+
+    <div>
+      <span class="help-inline">
+        <label for="external_recovery_grace"><strong>Recovery Grace (s):</strong></label>
+        <span class="help-tip" title="Wartezeit nach Recovery.">?</span>
+      </span>
+      <input id="external_recovery_grace" type="text" name="external_recovery_grace" value="<TMPL_VAR external_recovery_grace>" style="width:80px;">
+    </div>
+
+    <div>
+      <span class="help-inline">
+        <label for="preventive_recovery_hours"><strong>Präventiver Power-Cycle (h):</strong></label>
+        <span class="help-tip" title="Optionaler präventiver Recovery-Trigger nach X Stunden; veröffentlicht eine vorsorgliche externe Reboot-/Power-Cycle-Anforderung für die KLF200, um Verbindungsproblemen vorzubeugen (0 = deaktiviert)">?</span>
+      </span>
+      <input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>" style="width:80px;">
+    </div>
+
+  </div>
+</fieldset>
+
+  <div style="text-align:left; margin-top:3px;">
+    <button style="width:210px;"
+            type="submit"
+            name="save"
+            value="Save"
+            class="ui-btn ui-icon-check ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini">Speichern</button>
+  </div>
+</form>
+
+<script>
+function setServiceState(msg, color, pid, klfStatus) {
+  document.getElementById('servicestate').innerHTML =
+    '<span style="color:' + color + '">' +
+      msg + ' | PID: ' + (pid || '-') + ' | KLF: ' + (klfStatus || 'unknown') +
+    '</span>';
+}
+
+function postAjax(body) {
+  return fetch('index.cgi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body
+  }).then(r => r.json());
+}
+
+function loadServiceStatus() {
+  postAjax('ajax=statusvlx')
+    .then(d => {
+      let color = 'gray';
+      if (d.state === 'active') color = 'green';
+      if (d.error) color = 'red';
+      setServiceState(d.message || d.state || 'unknown', color, d.pid, d.klf_status);
+    })
+    .catch(() => setServiceState('Servicefehler', 'red', '-', 'unknown'));
+}
+
+function restartService() {
+  setServiceState('restarting...', 'blue', '…', 'unknown');
+  postAjax('ajax=restartvlx')
+    .then(() => setTimeout(loadServiceStatus, 1500))
+    .catch(() => setServiceState('restart failed', 'red', '-', 'unknown'));
+}
+
+function stopService() {
+  setServiceState('stopping...', 'orange', '…', 'unknown');
+  postAjax('ajax=stopvlx')
+    .then(() => setTimeout(loadServiceStatus, 1000))
+    .catch(() => setServiceState('stop failed', 'red', '-', 'unknown'));
+}
+
+setInterval(loadServiceStatus, 5000);
+document.addEventListener('DOMContentLoaded', loadServiceStatus);
+</script>
+<style>
+/* Test: wird diese Regel angewendet? */
+.ui-checkbox .ui-btn {
+  display: inline-block !important;
+  width: 350px !important;
+  box-sizing: border-box !important;
+}
+</style>

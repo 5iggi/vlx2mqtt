@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+ <!-- Background -->
+
+ <!-- House -->
+ <!-- MQTT Icon (sauber als Vektor, weiß) -->
+ <!-- Text -->
+ <g class="layer">
+  <title>Layer 1</title>
+  <rect fill="#66AA00" height="432" id="svg_1" rx="90" width="432" x="40" y="40"/>
+  <path d="m120,280l136,-140l136,140" fill="none" id="svg_2" stroke="white" stroke-linecap="round" stroke-linejoin="round" stroke-width="24" transform="matrix(1, 0, 0, 1, -6, -67)"/>
+  <g id="svg_3" transform="translate(18) matrix(5.99579, 0, 0, 5.29817, 166.051, 195.918)">
+   <path d="m10.66,23.99l-9.45,0a1.21,1.21 0 0 1 -1.21,-1.2l0,-9.18l0.07,0c5.78,0 10.5,4.65 10.59,10.38zm7.6,0l-4.04,0c-0.09,-7.74 -6.43,-14.01 -14.22,-14.05l0,-3.9l0.07,0c9.98,0 18.12,8.04 18.19,17.95zm4.53,0l-0.97,0c-0.07,-11.92 -9.83,-21.58 -21.82,-21.62l0,-1.16c0,-0.66 0.54,-1.2 1.21,-1.2l7.64,0c6.88,2.48 12.41,7.78 15.15,14.5l0,8.29c0,0.66 -0.54,1.19 -1.21,1.19zm-6.08,-23.98l6.09,0a1.19,1.19 0 0 1 1.2,1.19l0,5.91c-0.91,-1.24 -2.05,-2.65 -3.16,-3.76c-1.25,-1.24 -2.72,-2.36 -4.13,-3.35l0,0.01z" fill="white" id="svg_4"/>
+  </g>
+  <text fill="white" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="bold" id="svg_5" text-anchor="middle" transform="matrix(1.17975, 0, 0, 1.6896, -43.0088, -261.564)" x="253.49" y="410">VLX2MQTT</text>
+ </g>
+</svg>
