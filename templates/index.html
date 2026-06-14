@@ -25,8 +25,11 @@
 .ui-input-text {
   width: fit-content;
 
-#debug_verbose, #root_topic, #external_recovery_topic {
-  width: 350px;
+#debug_verbose, #root_topic, #external_recovery_topic, #topic_identifier {
+  width: 300px;
+}
+#rain_poll_interval {
+  width: 80px;
 }
 </style>
 
@@ -169,16 +172,47 @@
       <input id="backoff_max" type="text" name="backoff_max" value="<TMPL_VAR backoff_max>" style="width:80px;">
     </div>
 
+    <div>
+      <span class="help-inline">
+        <label for="topic_identifier"><strong>Topic Identifier:</strong></label>
+        <span class="help-tip" title="Legt fest, ob die MQTT-Untertopics über den Gerätenamen oder die node_id gebildet werden.">?</span>
+      </span>
+      <select id="topic_identifier" name="topic_identifier">
+        <option value="name" <TMPL_VAR topic_identifier_name_selected>>name</option>
+        <option value="node_id" <TMPL_VAR topic_identifier_node_id_selected>>node_id</option>
+      </select>
+    </div>
+    <div>
+      <span class="help-inline">
+        <label for="rain_poll_interval"><strong>Rain Poll Interval (s):</strong></label>
+        <span class="help-tip" title="Intervall für die indirekte Regenstatus-Abfrage an Fenstern mit Regensensor.">?</span>
+      </span>
+      <input id="rain_poll_interval" type="text" name="rain_poll_interval" value="<TMPL_VAR rain_poll_interval>" style="width:80px;">
+    </div>
+
   </div>
 
   <p>
     <span class="help-inline">
       <label for="debug_verbose">
         <input id="debug_verbose" type="checkbox" name="debug_verbose" value="1" <TMPL_VAR debug_verbose_checked>>
-        <strong>Verbose Logging</strong>
+        Verbose Logging
       </label>
       <span class="help-tip" title="Aktiviert ausführliche Debug-Meldungen im Plugin-Log.">?</span>
     </span>
+  </p>
+
+  <p>
+    <span class="help-inline">
+      <label for="publish_rain_raw_limit">
+        <input id="publish_rain_raw_limit" type="checkbox" name="publish_rain_raw_limit" value="1" <TMPL_VAR publish_rain_raw_limit_checked>>
+        Rain Raw Limit veröffentlichen
+      </label>
+      <span class="help-tip" title="Veröffentlicht zusätzlich den Rohwert der Regen-bezogenen Öffnungsbegrenzung als MQTT-Topic rain_raw_limit.">?</span>
+    </span>
+  </p>
+  <p style="margin-top:-6px; color:#555; font-size:0.95em;">
+    Beispiel: bei <code>topic_identifier = node_id</code> werden Topics wie <code>&lt;root_topic&gt;/2/position</code> oder <code>&lt;root_topic&gt;/0/rain</code> verwendet.
   </p>
 
   <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
@@ -192,12 +226,12 @@
     <span class="help-inline">
       <label for="external_recovery_enabled">
         <input id="external_recovery_enabled" type="checkbox" name="external_recovery_enabled" value="1" <TMPL_VAR external_recovery_enabled_checked>>
-        <strong>Externe Recovery aktivieren</strong>
+        Externe Recovery aktivieren
       </label>
       <span class="help-tip" title="Fordert bei wiederholten Fehlern einen externen Power-Cycle an.">?</span>
     </span>
   </p>
-
+<!--
     <div>
       <span class="help-inline">
         <label for="external_recovery_topic"><strong>Recovery Topic:</strong></label>
@@ -205,7 +239,7 @@
       </span>
       <input id="external_recovery_topic" type="text" name="external_recovery_topic" value="<TMPL_VAR external_recovery_topic>">
     </div>
-
+-->
   <!-- 2 Spalten für alle Recovery-Felder -->
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
 
@@ -298,10 +332,12 @@ setInterval(loadServiceStatus, 5000);
 document.addEventListener('DOMContentLoaded', loadServiceStatus);
 </script>
 <style>
-/* Test: wird diese Regel angewendet? */
 .ui-checkbox .ui-btn {
   display: inline-block !important;
-  width: 350px !important;
+  width: 300px !important;
   box-sizing: border-box !important;
+}
+#topic_identifier-button {
+  width: 240px !important;
 }
 </style>
