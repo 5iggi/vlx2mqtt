@@ -1,31 +1,29 @@
 #!/bin/bash
 # preupgrade.sh - Executed as the first step when updating an already-installed plugin.
 # Runs as user "loxberry" BEFORE preinstall.sh, only during updates (not on fresh install).
-# Use this to preserve existing user data before new files overwrite them.
+# Purpose: Preserve existing user configuration before update files overwrite defaults.
 # Exit codes: 0 = success, 1 = warning, 2 = error
 
-set -u
+# Load LoxBerry environment variables defensively.
+if [ -f /etc/environment ]; then
+    # shellcheck disable=SC1091
+    . /etc/environment || true
+fi
 
-COMMAND=$0        # Path to this script
-PTEMPDIR=$1       # Temporary folder (short) during installation
-PSHNAME=$2        # Plugin short name for scripts/cron
-PDIR=$3           # Plugin installation folder
-PVERSION=$4       # Plugin version
-# $5 unused - LBHOMEDIR now comes from /etc/environment
-PTEMPPATH=${6:-}  # Full temporary path during installation
+COMMAND=$0              # Path to this script
+PTEMPDIR=${1:-}         # Temporary folder (short) during installation
+PSHNAME=${2:-}          # Plugin short name for scripts/cron
+PDIR=${3:-}             # Plugin installation folder
+PVERSION=${4:-}         # Plugin version
+PTEMPPATH=${6:-}        # Full temporary path during installation (if provided)
 
-# Build full plugin-specific paths from environment variables
-PCGI=$LBPCGI/$PDIR
-PHTML=$LBPHTML/$PDIR
-PTEMPL=$LBPTEMPL/$PDIR
-PDATA=$LBPDATA/$PDIR
-PLOG=$LBPLOG/$PDIR
-PCONFIG=$LBPCONFIG/$PDIR
-PSBIN=$LBPSBIN/$PDIR
-PBIN=$LBPBIN/$PDIR
+# Only use variables that are really needed here.
+LBPCONFIG_SAFE=${LBPCONFIG:-/opt/loxberry/config/plugins}
+PCONFIG="${LBPCONFIG_SAFE}/${PDIR}"
 
-BACKUPROOT="/tmp/${PSHNAME}_upgrade"
-BACKUPCONFIG="$BACKUPROOT/config"
+# Use update-specific temp folder as intended for upgrade handover.
+BACKUPROOT="/tmp/${PTEMPDIR}_upgrade"
+BACKUPCONFIG="${BACKUPROOT}/config"
 
 mkdir -p "$BACKUPCONFIG"
 
