@@ -64,6 +64,9 @@ my %DEFAULTS = (
     'vlx2mqtt.external_recovery_grace'   => '120',
     'vlx2mqtt.external_recovery_topic'   => 'vlx2mqtt/recovery/powercycle_required',
     'vlx2mqtt.preventive_recovery_hours' => '24',
+    'vlx2mqtt.topic_identifier'           => 'name',
+    'vlx2mqtt.rain_poll_interval'         => '300',
+    'vlx2mqtt.publish_rain_raw_limit'     => '0',
 );
 
 sub load_cfg_hash {
@@ -244,6 +247,9 @@ if ($cgi->param('save')) {
     my $external_recovery_grace     = $cgi->param('external_recovery_grace')     // $cfg->{'vlx2mqtt.external_recovery_grace'};
     my $external_recovery_topic     = $cgi->param('external_recovery_topic')     // $cfg->{'vlx2mqtt.external_recovery_topic'};
     my $preventive_recovery_hours   = $cgi->param('preventive_recovery_hours')   // $cfg->{'vlx2mqtt.preventive_recovery_hours'};
+    my $topic_identifier            = $cgi->param('topic_identifier')            // $cfg->{'vlx2mqtt.topic_identifier'};
+    my $rain_poll_interval          = $cgi->param('rain_poll_interval')          // $cfg->{'vlx2mqtt.rain_poll_interval'};
+    my $publish_rain_raw_limit      = $cgi->param('publish_rain_raw_limit') ? 1 : 0;
     my $verbose                     = $cgi->param('debug_verbose') ? 1 : 0;
 
     $mqtt_port                   = ($mqtt_port =~ /^\d+$/) ? int($mqtt_port) : $cfg->{'vlx2mqtt.mqtt_port'};
@@ -255,6 +261,8 @@ if ($cgi->param('save')) {
     $external_recovery_cooldown  = ($external_recovery_cooldown =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $external_recovery_cooldown : $cfg->{'vlx2mqtt.external_recovery_cooldown'};
     $external_recovery_grace     = ($external_recovery_grace =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $external_recovery_grace : $cfg->{'vlx2mqtt.external_recovery_grace'};
     $preventive_recovery_hours   = ($preventive_recovery_hours =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $preventive_recovery_hours : $cfg->{'vlx2mqtt.preventive_recovery_hours'};
+    $topic_identifier            = ($topic_identifier && $topic_identifier =~ /^(?:name|node_id)$/) ? $topic_identifier : ($cfg->{'vlx2mqtt.topic_identifier'} || 'name');
+    $rain_poll_interval          = ($rain_poll_interval =~ /^\d+$/) ? int($rain_poll_interval) : ($cfg->{'vlx2mqtt.rain_poll_interval'} || 300);
 
     $newcfg{'vlx2mqtt.klf_host'}                   = $klf_host;
     $newcfg{'vlx2mqtt.klf_pw'}                     = $klf_pw;
@@ -275,6 +283,9 @@ if ($cgi->param('save')) {
     $newcfg{'vlx2mqtt.external_recovery_grace'}    = $external_recovery_grace;
     $newcfg{'vlx2mqtt.external_recovery_topic'}    = $external_recovery_topic;
     $newcfg{'vlx2mqtt.preventive_recovery_hours'}  = $preventive_recovery_hours;
+    $newcfg{'vlx2mqtt.topic_identifier'}            = $topic_identifier;
+    $newcfg{'vlx2mqtt.rain_poll_interval'}          = $rain_poll_interval;
+    $newcfg{'vlx2mqtt.publish_rain_raw_limit'}      = $publish_rain_raw_limit;
 
     eval {
         save_cfg_hash($config_file, \%newcfg);
@@ -325,6 +336,10 @@ $template->param(
     external_recovery_grace           => $cfg->{'vlx2mqtt.external_recovery_grace'},
     external_recovery_topic           => $cfg->{'vlx2mqtt.external_recovery_topic'},
     preventive_recovery_hours         => $cfg->{'vlx2mqtt.preventive_recovery_hours'},
+    topic_identifier_name_selected    => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'name' ? 'selected' : ''),
+    topic_identifier_node_id_selected => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'node_id' ? 'selected' : ''),
+    rain_poll_interval                => $cfg->{'vlx2mqtt.rain_poll_interval'} || '300',
+    publish_rain_raw_limit_checked    => ($cfg->{'vlx2mqtt.publish_rain_raw_limit'} ? 'checked' : ''),
 );
 
 my $plugintitle  = ($plugin->{PLUGINDB_TITLE} || 'vlx2mqtt') . ' ' . ($plugin->{PLUGINDB_VERSION} || '');
