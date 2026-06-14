@@ -83,7 +83,7 @@ apply_pyvlx_patch()
 # Konfiguration
 # ============================================================
 DEFAULT_CFG = {
-    "klf_host": "",
+    "klf_host": "VELUX-KLF-DE3B.fritz.box",
     "klf_pw": "",
     "mqtt_host": "127.0.0.1",
     "mqtt_port": 1883,
@@ -96,16 +96,15 @@ DEFAULT_CFG = {
     "backoff_max": 30.0,
     "verbose": False,
     "logfile": "/opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log",
-    # Externe Recovery (z. B. Loxone -> schaltbare Steckdose)
     "external_recovery_enabled": False,
     "external_recovery_threshold": 4,
     "external_recovery_cooldown": 1800.0,
     "external_recovery_grace": 120.0,
     "external_recovery_topic": "vlx2mqtt/recovery/powercycle_required",
-
-    # Optionale präventive Recovery-Anforderung (standardmäßig AUS)
-    # 0 = deaktiviert, sonst alle X Stunden nur wenn idle
     "preventive_recovery_hours": 0.0,
+    "topic_identifier": "name",
+    "rain_poll_interval": 300,
+    "publish_rain_raw_limit": False,
 }
 
 LOGFORMAT = "%(asctime)-15s %(levelname)s %(message)s"
@@ -136,12 +135,15 @@ def load_cfg_file(path: str) -> dict:
     cfg["mqtt_port"] = sec.getint("mqtt_port", fallback=cfg["mqtt_port"])
     cfg["mqtt_user"] = sec.get("mqtt_user", fallback=cfg["mqtt_user"])
     cfg["mqtt_pw"] = sec.get("mqtt_pw", fallback=cfg["mqtt_pw"])
-    cfg["root_topic"] = sec.get("root_topic", fallback=cfg["root_topic"])
+    cfg["root_topic"] = sec.get("root_topic", fallback=cfg["root_topic"]).strip().strip("/")
     cfg["initial_delay"] = sec.getfloat("initial_delay", fallback=cfg["initial_delay"])
     cfg["connect_timeout"] = sec.getfloat("connect_timeout", fallback=cfg["connect_timeout"])
     cfg["moving_timeout"] = sec.getfloat("moving_timeout", fallback=cfg["moving_timeout"])
     cfg["backoff_max"] = sec.getfloat("backoff_max", fallback=cfg["backoff_max"])
-    cfg["verbose"] = _cfg_bool(sec.get("verbose", fallback=str(cfg["verbose"])), default=cfg["verbose"])
+    cfg["verbose"] = _cfg_bool(
+        sec.get("verbose", fallback=str(cfg["verbose"])),
+        default=cfg["verbose"],
+    )
     cfg["logfile"] = sec.get("logfile", fallback=cfg["logfile"])
     cfg["external_recovery_enabled"] = _cfg_bool(
         sec.get("external_recovery_enabled", fallback=str(cfg["external_recovery_enabled"])),
@@ -161,6 +163,18 @@ def load_cfg_file(path: str) -> dict:
     )
     cfg["preventive_recovery_hours"] = sec.getfloat(
         "preventive_recovery_hours", fallback=cfg["preventive_recovery_hours"]
+    )
+    cfg["topic_identifier"] = sec.get(
+        "topic_identifier", fallback=cfg["topic_identifier"]
+    ).strip().lower()
+    if cfg["topic_identifier"] not in ("name", "node_id"):
+        cfg["topic_identifier"] = DEFAULT_CFG["topic_identifier"]
+    cfg["rain_poll_interval"] = sec.getint(
+        "rain_poll_interval", fallback=cfg["rain_poll_interval"]
+    )
+    cfg["publish_rain_raw_limit"] = _cfg_bool(
+        sec.get("publish_rain_raw_limit", fallback=str(cfg["publish_rain_raw_limit"])),
+        default=cfg["publish_rain_raw_limit"],
     )
 
     return cfg
@@ -317,6 +331,135 @@ def should_be_moving(st: dict, pos: Optional[int], target: Optional[int], run_st
     return False
 
 
+def sanitize_topic_part(value: Any) -> str:
+    txt = str(value).strip()
+    txt = txt.replace(" ", "_")
+    safe = []
+    for ch in txt:
+        if ch.isalnum() or ch in ("_", "-"):
+            safe.append(ch)
+        else:
+            safe.append("_")
+    return "".join(safe)
+
+
+def get_topic_identifier_mode() -> str:
+    mode = str(CFG.get("topic_identifier", "name")).strip().lower()
+    return "node_id" if mode == "node_id" else "name"
+
+
+def get_node_state_key(node) -> str:
+    node_id = getattr(node, "node_id", None)
+    if node_id is not None:
+        return f"id:{node_id}"
+    return f"name:{getattr(node, 'name', '')}"
+
+
+def get_node_topic_id(node) -> str:
+    """
+    Gibt den Identifier zurück, der im MQTT-Topic verwendet wird:
+    - node.name
+    - oder node.node_id
+    """
+    if get_topic_identifier_mode() == "node_id":
+        node_id = getattr(node, "node_id", None)
+        if node_id is not None:
+            return str(node_id)
+
+    name = getattr(node, "name", None)
+    if name:
+        return sanitize_topic_part(name)
+
+    node_id = getattr(node, "node_id", None)
+    if node_id is not None:
+        return str(node_id)
+
+    return "unknown"
+
+
+def build_node_topic(node, suffix: str) -> str:
+    return f"{CFG['root_topic']}/{get_node_topic_id(node)}/{suffix}"
+
+
+def node_matches_identifier(node, identifier: str) -> bool:
+    """
+    Prüft, ob ein empfangener Identifier zu diesem Node passt.
+    """
+    ident = str(identifier).strip()
+    mode = get_topic_identifier_mode()
+
+    if mode == "node_id":
+        node_id = getattr(node, "node_id", None)
+        return node_id is not None and ident == str(node_id)
+
+    # name-Modus
+    name = getattr(node, "name", None)
+    if name and ident == sanitize_topic_part(name):
+        return True
+
+    # Toleranter Fallback im name-Modus:
+    node_id = getattr(node, "node_id", None)
+    if node_id is not None and ident == str(node_id):
+        return True
+
+    return False
+
+
+def find_node_by_identifier(identifier: str):
+    for node in getattr(pyvlx, "nodes", []):
+        if not isinstance(node, OpeningDevice):
+            continue
+        if node_matches_identifier(node, identifier):
+            return node
+    return None
+
+
+async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
+    """
+    Ermittelt Regenstatus indirekt über die Öffnungsbegrenzung.
+    Heuristik wie in Home Assistant:
+    limitation_min >= 89 => Regen erkannt
+    """
+    try:
+        if not hasattr(node, "get_limitation_min"):
+            logging.debug(
+                "read_rain_state: node %s has no get_limitation_min",
+                getattr(node, "name", ""),
+            )
+            return None, None
+
+        limitation = await node.get_limitation_min()
+        logging.debug(
+            "read_rain_state: limitation for %s -> %r",
+            getattr(node, "name", ""),
+            limitation,
+        )
+
+        if limitation is None:
+            return None, None
+
+        raw = getattr(limitation, "position_percent", None)
+        if raw is None:
+            raw = getattr(limitation, "min_value", None)
+
+        logging.debug(
+            "read_rain_state: raw limitation for %s -> %r",
+            getattr(node, "name", ""),
+            raw,
+        )
+
+        if raw is None:
+            return None, None
+
+        raw_int = int(raw)
+        return (raw_int >= 89), raw_int
+
+    except Exception:
+        logging.exception("read_rain_state failed for %s", getattr(node, "name", ""))
+        return None, None
+
+
+
 # ============================================================
 # Logging
 # ============================================================
@@ -399,6 +542,7 @@ LAST_EXTERNAL_RECOVERY_TS = None
 WAIT_UNTIL_AFTER_RECOVERY = None
 RECOVERY_REQUESTED = False
 RECOVERY_REASON = None
+MAIN_LOOP = None
 LAST_PUBLISHED = {}
 
 # ============================================================
@@ -543,10 +687,43 @@ def compute_status_detail() -> str:
 
 
 def compute_overall_status() -> str:
-    """Einfacher Loxone-Status: ok oder error."""
+    """
+    Einfacher Loxone-Status: ok / error
+    """
+    if SERVICE_STATE == "stopped":
+        return "ok"
+
     if SERVICE_STATE == "running" and KLF_STATE == "klf_connected":
         return "ok"
+
     return "error"
+
+
+def submit_coro_from_thread(coro, description: str = ""):
+    """
+    Plant eine Coroutine thread-sicher auf dem main asyncio loop ein.
+    Wird z. B. aus MQTT-Callbacks (Paho-Thread) verwendet.
+    """
+    global MAIN_LOOP
+
+    if MAIN_LOOP is None or MAIN_LOOP.is_closed():
+        logging.error("submit_coro_from_thread: no running MAIN_LOOP for %s", description or coro)
+        try:
+            coro.close()
+        except Exception:
+            pass
+        return None
+
+    future = asyncio.run_coroutine_threadsafe(coro, MAIN_LOOP)
+
+    def _done_callback(fut):
+        try:
+            fut.result()
+        except Exception:
+            logging.exception("Coroutine failed: %s", description or coro)
+
+    future.add_done_callback(_done_callback)
+    return future
 
 
 def publish_service_status():
@@ -671,6 +848,47 @@ def publish_recovery_status():
         logging.exception("publish_recovery_status failed")
 
 
+def publish_node_metadata():
+    """
+    Publiziert Zuordnung name <-> node_id als retained Topics.
+    Hilfreich für Loxone / Debugging.
+    """
+    try:
+        for node in getattr(pyvlx, "nodes", []):
+            if not isinstance(node, OpeningDevice):
+                continue
+
+            node_id = getattr(node, "node_id", None)
+            node_name = getattr(node, "name", "")
+
+            if node_id is None:
+                continue
+
+            mqtt_publish_if_changed(
+                f"{CFG['root_topic']}/{node_id}/name",
+                node_name,
+                qos=1,
+                retain=True,
+            )
+
+            mqtt_publish_if_changed(
+                f"{CFG['root_topic']}/{node_id}/node_id",
+                node_id,
+                qos=1,
+                retain=True,
+            )
+
+            mqtt_publish_if_changed(
+                f"{CFG['root_topic']}/name_map/{sanitize_topic_part(node_name)}",
+                node_id,
+                qos=1,
+                retain=True,
+            )
+
+    except Exception:
+        logging.exception("publish_node_metadata failed")
+
+
 def request_external_recovery(reason: str):
     """
     Fordert eine externe Recovery an (typisch: Loxone schaltet Steckdose aus/ein).
@@ -706,6 +924,7 @@ def any_node_moving() -> bool:
             return True
     return False
 
+
 def mqtt_on_connect(client, userdata, flags, rc, properties=None):
     global mqtt_connected
     mqtt_connected = (rc == 0)
@@ -713,11 +932,12 @@ def mqtt_on_connect(client, userdata, flags, rc, properties=None):
     if mqtt_connected:
         logging.info("MQTT connected rc=%s", rc)
         try:
-            client.subscribe(f"{CFG['root_topic']}/+/set")
+            sub_topic = f"{CFG['root_topic']}/+/set"
+            client.subscribe(sub_topic)
+            logging.debug("MQTT subscribed to %s", sub_topic)
         except Exception:
             logging.exception("subscribe failed")
 
-        # Queue flushen
         while PUBLISH_QUEUE:
             topic, payload, qos, retain = PUBLISH_QUEUE.pop(0)
             try:
@@ -748,12 +968,79 @@ def mqtt_on_message(client, userdata, msg):
     except Exception:
         payload = str(msg.payload)
 
-    prefix = CFG["root_topic"] + "/"
-    if msg.topic.startswith(prefix) and msg.topic.endswith("/set"):
-        name = msg.topic[len(prefix):-4]
-        logging.info("MQTT cmd %s -> %s", name, payload)
-        st = NODE_STATE.setdefault(name, {})
-        st["cmd"] = payload
+    topic = str(msg.topic).strip()
+    root = str(CFG["root_topic"]).strip()
+
+    if not topic.startswith(root + "/"):
+        return
+
+    if not topic.endswith("/set"):
+        return
+
+    rel = topic[len(root) + 1:]
+    parts = rel.split("/")
+
+    if len(parts) < 2 or parts[-1] != "set":
+        logging.warning("Ignoring unsupported command topic: %s", topic)
+        return
+
+    identifier = "/".join(parts[:-1]).strip()
+    node = find_node_by_identifier(identifier)
+    if node is None:
+        logging.warning("No matching node found for topic identifier '%s' (topic=%s)", identifier, topic)
+        return
+
+    stkey = get_node_state_key(node)
+    st = NODE_STATE.setdefault(stkey, {})
+    st["node_name"] = getattr(node, "name", "")
+    st["node_id"] = getattr(node, "node_id", None)
+    st["topic_id"] = get_node_topic_id(node)
+
+    value_u = payload.strip().upper()
+
+    try:
+        if value_u in ("UP", "OPEN"):
+            submit_coro_from_thread(
+                node.open(wait_for_completion=False),
+                description=f"open:{st.get('topic_id') or getattr(node, 'name', '')}",
+            )
+            st["command_ts"] = time.time()
+            st["pending_target"] = 0
+
+        elif value_u in ("DOWN", "CLOSE"):
+            submit_coro_from_thread(
+                node.close(wait_for_completion=False),
+                description=f"close:{st.get('topic_id') or getattr(node, 'name', '')}",
+            )
+            st["command_ts"] = time.time()
+            st["pending_target"] = 100
+
+        elif value_u == "STOP":
+            submit_coro_from_thread(
+                node.stop(),
+                description=f"stop:{st.get('topic_id') or getattr(node, 'name', '')}",
+            )
+            st["command_ts"] = time.time()
+
+        else:
+            try:
+                pos = int(float(payload))
+            except Exception:
+                logging.warning("Unsupported command payload '%s' for topic %s", payload, topic)
+                return
+
+            submit_coro_from_thread(
+                safe_set_position(
+                    node,
+                    pos,
+                    st.get("topic_id") or getattr(node, "name", ""),
+                    st,
+                ),
+                description=f"set_position:{st.get('topic_id') or getattr(node, 'name', '')}:{pos}",
+            )
+
+    except Exception:
+        logging.exception("mqtt_on_message failed for topic=%s payload=%s", topic, payload)
 
 
 def mqtt_on_publish(client, userdata, mid):
@@ -882,6 +1169,94 @@ async def connect_pyvlx(stop_event: asyncio.Event):
 
             backoff = min(backoff * 2, CFG["backoff_max"])
 
+
+async def poll_rain_sensors_once():
+    """
+    Pollt den indirekten Regenstatus genau einmal.
+    """
+    logging.debug("poll_rain_sensors_once: start")
+
+    for node in getattr(pyvlx, "nodes", []):
+        if not isinstance(node, OpeningDevice):
+            continue
+
+        node_name = getattr(node, "name", "")
+        node_id = getattr(node, "node_id", None)
+
+        type_candidates = {
+            "node_type": getattr(node, "node_type", None),
+            "type": getattr(node, "type", None),
+            "sub_type": getattr(node, "sub_type", None),
+            "node_type_subtype": getattr(node, "node_type_subtype", None),
+            "product_group": getattr(node, "product_group", None),
+            "product_type": getattr(node, "product_type", None),
+        }
+
+        logging.debug(
+            "poll_rain_sensors_once: node=%s node_id=%s type_candidates=%r",
+            node_name,
+            node_id,
+            type_candidates,
+        )
+
+        if not str(node_name).lower().startswith("fenster"):
+            logging.debug(
+                "poll_rain_sensors_once: skip node name=%s node_id=%s (not a window by name)",
+                node_name,
+                node_id,
+            )
+            continue
+
+        logging.debug(
+            "poll_rain_sensors_once: reading rain state for name=%s node_id=%s",
+            node_name,
+            node_id,
+        )
+
+        rain, raw_limit = await read_rain_state(node)
+
+        logging.debug(
+            "poll_rain_sensors_once: result name=%s node_id=%s rain=%s raw_limit=%s",
+            node_name,
+            node_id,
+            rain,
+            raw_limit,
+        )
+
+        if rain is None:
+            continue
+
+        mqtt_publish_if_changed(
+            build_node_topic(node, "rain"),
+            "true" if rain else "false",
+            qos=1,
+            retain=True,
+        )
+
+        if _cfg_bool(CFG.get("publish_rain_raw_limit", False), False) and raw_limit is not None:
+            mqtt_publish_if_changed(
+                build_node_topic(node, "rain_raw_limit"),
+                raw_limit,
+                qos=1,
+                retain=True,
+            )
+
+
+async def poll_rain_sensors():
+    """
+    Pollt den indirekten Regenstatus nur für Fensternodes mit Regensensor.
+    """
+    interval = max(60, int(float(CFG.get("rain_poll_interval", 300))))
+
+    while True:
+        try:
+            await poll_rain_sensors_once()
+        except Exception:
+            logging.exception("poll_rain_sensors failed")
+
+        await asyncio.sleep(interval)
+
+
 # ============================================================
 # Hintergrundtasks
 # ============================================================
@@ -894,19 +1269,34 @@ async def publish_initial_snapshot():
             continue
 
         try:
+            stkey = get_node_state_key(node)
+            st = NODE_STATE.setdefault(stkey, {})
+            st["node_name"] = getattr(node, "name", "")
+            st["node_id"] = getattr(node, "node_id", None)
+            st["topic_id"] = get_node_topic_id(node)
+
             pos = parse_position(node)
             if pos is not None:
-                mqtt_publish(f"{CFG['root_topic']}/{node.name}/position", pos)
-            mqtt_publish(f"{CFG['root_topic']}/{node.name}/moving", "false")
+                st["last_published_pos"] = pos
+                st["last_pos"] = pos
+                mqtt_publish_if_changed(
+                    build_node_topic(node, "position"),
+                    pos,
+                )
+
+            mqtt_publish_if_changed(
+                build_node_topic(node, "moving"),
+                "true" if st.get("moving") else "false",
+            )
+
         except Exception:
             logging.exception(
                 "publish_initial_snapshot failed for %s",
-                getattr(node, "name", "")
+                getattr(node, "name", ""),
             )
 
 
 async def publish_health_task():
-    # Initialen Status publiziert connect_pyvlx() bereits selbst.
     await asyncio.sleep(60)
 
     while True:
@@ -917,33 +1307,11 @@ async def publish_health_task():
         await asyncio.sleep(60)
 
 
-async def periodic_state_logger(interval=60):
-    await asyncio.sleep(interval)
-    while True:
-        try:
-            for node in getattr(pyvlx, "nodes", []):
-                if not isinstance(node, OpeningDevice):
-                    continue
-
-                st = NODE_STATE.setdefault(node.name, {})
-                if st.get("moving", False):
-                    logging.debug("periodic_state_logger: skipping %s while it is in motion", node.name)
-                    continue
-
-                pos = parse_position(node)
-                if pos is not None:
-                    mqtt_publish(f"{CFG['root_topic']}/{node.name}/position", pos)
-                logging.info("%s at %s%%", node.name, pos if pos is not None else "unknown")
-        except Exception:
-            logging.exception("periodic_state_logger error")
-        await asyncio.sleep(interval)
-
-
 async def moving_watchdog():
     while True:
         try:
             now = time.time()
-            for name, st in list(NODE_STATE.items()):
+            for stkey, st in list(NODE_STATE.items()):
                 if not st.get("moving"):
                     continue
                 cmd_ts = st.get("command_ts")
@@ -953,7 +1321,8 @@ async def moving_watchdog():
                     st["moving"] = False
                     st["pending_target"] = None
                     mqtt_publish(f"{CFG['root_topic']}/{name}/moving", "false")
-                    logging.warning("watchdog: %s forced to moving=false after timeout", name)
+                    node_label = st.get("topic_id") or st.get("node_name") or stkey
+                    logging.warning("watchdog: %s forced to moving=false after timeout", node_label)
         except Exception:
             logging.exception("moving_watchdog error")
         await asyncio.sleep(1.0)
@@ -964,7 +1333,11 @@ async def moving_watchdog():
 # ============================================================
 async def on_node_update(node):
     try:
-        st = NODE_STATE.setdefault(node.name, {})
+        stkey = get_node_state_key(node)
+        st = NODE_STATE.setdefault(stkey, {})
+        st["node_name"] = getattr(node, "name", "")
+        st["node_id"] = getattr(node, "node_id", None)
+        st["topic_id"] = get_node_topic_id(node)
         st["last_update_ts"] = time.time()
 
         pos = parse_position(node)
@@ -972,12 +1345,17 @@ async def on_node_update(node):
         run_status = get_run_status(node)
         state_str = get_state(node)
 
+        node_label = st.get("topic_id") or st.get("node_name") or stkey
+
         if pos is not None:
             last_pub = st.get("last_published_pos")
             if pos != last_pub:
                 st["last_published_pos"] = pos
                 st["last_pos"] = pos
-                mqtt_publish(f"{CFG['root_topic']}/{node.name}/position", pos)
+                mqtt_publish_if_changed(
+                    build_node_topic(node, "position"),
+                    pos,
+                )
 
         if target is not None:
             st["last_target"] = target
@@ -997,18 +1375,17 @@ async def on_node_update(node):
             last_reply_str = ""
             is_overruled = False
 
-        if "OVERRULED" in last_reply_str:
-            if st.get("stop_in_progress", False):
-                logging.debug("%s: COMMAND_OVERRULED during stop_in_progress", node.name)
+        if "OVERRULED" in last_reply_str and st.get("stop_in_progress", False):
+            logging.debug("%s: COMMAND_OVERRULED during stop_in_progress", node_label)
 
         try:
             raw_target_field = getattr(node.target, "position_percent", None)
             if raw_target_field is not None and str(raw_target_field).upper().strip() == "CURRENT":
-                logging.debug("%s: CURRENT target observed", node.name)
+                logging.debug("%s: CURRENT target observed", node_label)
         except Exception:
             pass
 
-        # Sonderfall STOP:
+        # Sonderfall STOP
         if st.get("stop_in_progress", False) and is_overruled:
             moving = True
         else:
@@ -1053,11 +1430,22 @@ async def on_node_update(node):
                 st["pending_target"] = None
 
         if prev_moving != moving:
-            mqtt_publish(f"{CFG['root_topic']}/{node.name}/moving", "true" if moving else "false", retain=False)
-            logging.info("%s moving: %s (run_status=%s target=%s pos=%s)", node.name, moving, run_status, target, pos)
+            mqtt_publish_if_changed(
+                build_node_topic(node, "moving"),
+                "true" if st.get("moving") else "false",
+            )
+            logging.info(
+                "%s moving: %s (run_status=%s target=%s pos=%s)",
+                node_label,
+                moving,
+                run_status,
+                target,
+                pos,
+            )
 
     except Exception:
         logging.exception("on_node_update")
+
 
 
 # ============================================================
@@ -1072,7 +1460,12 @@ async def safe_set_position(device, value: int, name: str, st: dict):
 
     try:
         await device.set_position(v, wait_for_completion=False)
-        logging.debug("safe_set_position: set_position ok for %s -> %s", name, v)
+        logging.debug(
+            "safe_set_position ok for %s: requested=%s device=%s",
+            name,
+            value,
+            v,
+        )
         return True
     except Exception:
         logging.exception("safe_set_position failed for %s", name)
@@ -1135,6 +1528,7 @@ async def preventive_recovery_task():
 async def main():
     global pyvlx
     global SERVICE_STATE, SERVICE_DETAIL, KLF_STATE
+    global MAIN_LOOP
 
     SERVICE_STATE = "starting"
     SERVICE_DETAIL = "initializing"
@@ -1142,6 +1536,7 @@ async def main():
     tasks = []
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
+    MAIN_LOOP = loop
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -1152,6 +1547,7 @@ async def main():
     try:
         logging.debug("KLF host: %s", CFG["klf_host"])
         logging.debug("MQTT broker: %s:%s", CFG["mqtt_host"], CFG["mqtt_port"])
+        logging.debug("Topic identifier mode: %s", get_topic_identifier_mode())
 
         mqttc.loop_start()
         try:
@@ -1181,7 +1577,11 @@ async def main():
             if not isinstance(node, OpeningDevice):
                 continue
 
-            NODE_STATE.setdefault(node.name, {
+            stkey = get_node_state_key(node)
+            st = NODE_STATE.setdefault(stkey, {
+                "node_name": getattr(node, "name", ""),
+                "node_id": getattr(node, "node_id", None),
+                "topic_id": get_node_topic_id(node),
                 "last_pos": None,
                 "last_target": None,
                 "pending_target": None,
@@ -1190,102 +1590,51 @@ async def main():
                 "last_run_status": None,
                 "last_published_pos": None,
                 "last_update_ts": 0.0,
-                "cmd": None,
                 "stop_in_progress": False,
             })
+
+            st["node_name"] = getattr(node, "name", "")
+            st["node_id"] = getattr(node, "node_id", None)
+            st["topic_id"] = get_node_topic_id(node)
 
             try:
                 node.register_device_updated_cb(
                     lambda _n, _node=node: asyncio.create_task(on_node_update(_node))
                 )
             except Exception:
-                logging.exception("register_device_updated_cb failed for %s", node.name)
+                logging.exception(
+                    "register_device_updated_cb failed for %s",
+                    getattr(node, "name", ""),
+                )
 
-            logging.debug("watching: %s", node.name)
+            logging.debug(
+                "watching node: name=%s node_id=%s topic_id=%s",
+                getattr(node, "name", ""),
+                getattr(node, "node_id", None),
+                get_node_topic_id(node),
+            )
+
+        try:
+            publish_node_metadata()
+        except Exception:
+            logging.exception("publish_node_metadata failed during startup")
+
+        try:
+            await poll_rain_sensors_once()
+        except Exception:
+            logging.exception("initial rain poll failed")
 
         tasks = [
             asyncio.create_task(publish_initial_snapshot()),
             asyncio.create_task(publish_health_task()),
-            asyncio.create_task(periodic_state_logger(interval=60)),
             asyncio.create_task(moving_watchdog()),
+            asyncio.create_task(poll_rain_sensors()),
             asyncio.create_task(preventive_recovery_task()),
         ]
 
+        # Hauptloop: nur auf Stop warten
         while not stop_event.is_set():
-            for name, st in list(NODE_STATE.items()):
-                cmd = st.pop("cmd", None)
-                if not cmd:
-                    continue
-
-                device = next((d for d in getattr(pyvlx, "nodes", []) if getattr(d, "name", None) == name), None)
-                if not device:
-                    logging.warning("Requested unknown node: %s", name)
-                    continue
-
-                def mark_optimistic(target_value=None):
-                    st["moving"] = True
-                    st["command_ts"] = time.time()
-                    st["stop_in_progress"] = False
-
-                    if isinstance(target_value, int):
-                        st["pending_target"] = target_value
-                        st["last_target"] = target_value
-                    else:
-                        st["pending_target"] = None
-
-                    mqtt_publish(
-                        f"{CFG['root_topic']}/{name}/moving",
-                        "true",
-                        qos=1,
-                        retain=True,
-                    )
-
-                cmd_norm = str(cmd).strip()
-                up = cmd_norm.upper()
-
-                if up in ("UP", "OPEN"):
-                    logging.info("%s is going up", name)
-                    mark_optimistic(0)
-                    try:
-                        await device.open(wait_for_completion=False)
-                    except Exception:
-                        logging.exception("device.open failed for %s", name)
-
-                elif up in ("DOWN", "CLOSE"):
-                    logging.info("%s is going down", name)
-                    mark_optimistic(100)
-                    try:
-                        await device.close(wait_for_completion=False)
-                    except Exception:
-                        logging.exception("device.close failed for %s", name)
-
-                elif up == "STOP":
-                    logging.info("%s stop requested", name)
-                    st["command_ts"] = time.time()
-                    st["stop_in_progress"] = True
-                    st["pending_target"] = None
-
-                    try:
-                        await device.stop()
-                    except AttributeError:
-                        logging.warning("%s: stop() not supported", name)
-                    except Exception:
-                        logging.exception("device.stop failed for %s", name)
-
-                else:
-                    try:
-                        val = int(round(float(cmd_norm)))
-                        if val < 0 or val > 100:
-                            raise ValueError("out of range")
-                        logging.info("%s set to %d", name, val)
-                        mark_optimistic(val)
-                        ok = await safe_set_position(device, val, name, st)
-                        if not ok:
-                            st["command_ts"] = None
-                    except Exception:
-                        logging.warning("Unknown command '%s' for %s", cmd_norm, name)
-
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
 
         logging.info("shutdown requested")
 
@@ -1325,7 +1674,6 @@ async def main():
                         if asyncio.iscoroutine(result):
                             await result
 
-                # Referenz löschen, damit __del__ später nichts mehr versucht
                 pyvlx = None
 
         except Exception:
@@ -1341,7 +1689,6 @@ async def main():
             await asyncio.sleep(0.2)
         except Exception:
             pass
-
 
         try:
             mqttc.loop_stop()
