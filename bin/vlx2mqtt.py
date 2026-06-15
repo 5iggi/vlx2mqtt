@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import time
@@ -38,7 +39,6 @@ def apply_pyvlx_patch():
             ret += bytes([self.fpi1])
             ret += bytes([self.fpi2])
 
-            # Hauptparameter robust bestimmen
             param = 0
             try:
                 param = int(self.parameter)
@@ -189,7 +189,7 @@ LOGFILE = CFG["logfile"]
 # ============================================================
 
 def normalize_from_device(raw: Any) -> Optional[int]:
-    """VELUX-Rohwerte sicher in 0..100 umwandeln."""
+    """Convert raw VELUX values safely to 0..100."""
     try:
         txt = str(raw).replace("%", "").strip()
         if txt.upper() in ("UNKNOWN", "CURRENT", ""):
@@ -226,7 +226,7 @@ def scale_to_device(v_raw: Any) -> Optional[int]:
 
 def parse_target(node, st: dict) -> Optional[int]:
     """
-    Liest das Ziel
+    Read target position robustly.
     """
     target = None
 
@@ -234,19 +234,23 @@ def parse_target(node, st: dict) -> Optional[int]:
         target_raw = getattr(node.target, "position_percent", None)
         if target_raw is not None:
             raw_upper = str(target_raw).upper().strip()
-            if raw_upper == "CURRENT":
-                return None
-            target = normalize_from_device(target_raw)
+            if raw_upper != "CURRENT":
+                target = normalize_from_device(target_raw)
     except Exception:
         target = None
 
-    # Nur wenn kein STOP aktiv ist, darf pending_target als Fallback dienen
-    if target is None and not st.get("stop_in_progress", False):
-        cmd_ts = st.get("command_ts")
-        if cmd_ts and (time.time() - cmd_ts) < 5.0:
-            pt = st.get("pending_target")
-            if isinstance(pt, int):
-                target = pt
+    if st.get("stop_in_progress", False):
+        return target
+
+    if target is None:
+        pt = st.get("pending_target")
+        if isinstance(pt, int):
+            target = pt
+
+    if target is None:
+        lt = st.get("last_target")
+        if isinstance(lt, int):
+            target = lt
 
     return target
 
@@ -274,18 +278,113 @@ def get_state(node) -> str:
     except Exception:
         return ""
 
+def parse_state_code(node) -> Optional[int]:
+    """
+    Read numeric KLF state (e.g. 2/3/4/5) from the node.
+    Handle different pyvlx representations.
+    """
+    candidates = [
+        getattr(node, "last_frame_state", None),
+        getattr(node, "state", None),
+    ]
+
+    for cand in candidates:
+        if cand is None:
+            continue
+
+        try:
+            if isinstance(cand, (int, float)):
+                return int(cand)
+        except Exception:
+            pass
+
+        try:
+            txt = str(cand).strip()
+        except Exception:
+            continue
+
+        if not txt:
+            continue
+
+        if txt.isdigit():
+            try:
+                return int(txt)
+            except Exception:
+                pass
+
+        m = re.search(r"(?<!\d)(\d+)(?!\d)", txt)
+        if m:
+            try:
+                return int(m.group(1))
+            except Exception:
+                pass
+
+    return None
+
+
+def parse_remaining_time(node) -> Optional[int]:
+    """
+    Read remaining_time from the node.
+    """
+    candidates = [
+        getattr(node, "remaining_time", None),
+        getattr(node, "last_frame_remaining_time", None),
+        getattr(getattr(node, "position", None), "remaining_time", None),
+        getattr(getattr(node, "target", None), "remaining_time", None),
+    ]
+
+    for cand in candidates:
+        if cand is None:
+            continue
+
+        try:
+            if isinstance(cand, (int, float)):
+                v = int(cand)
+                if v >= 0:
+                    return v
+                continue
+        except Exception:
+            pass
+
+        try:
+            txt = str(cand).strip()
+        except Exception:
+            continue
+
+        if not txt:
+            continue
+
+        m = re.search(r"(-?\d+)", txt)
+        if not m:
+            continue
+
+        try:
+            v = int(m.group(1))
+            if v >= 0:
+                return v
+        except Exception:
+            continue
+
+    return None
+
 
 def should_be_moving(st: dict, pos: Optional[int], target: Optional[int], run_status: str, state_str: str) -> bool:
     """
-    Stabile moving-Logik ohne Interpolation.
+    Robust moving state logic.
     """
-    rs = str(run_status).upper()
-    state_u = str(state_str).upper()
+    rs = str(run_status or "").upper()
+    state_u = str(state_str or "").upper().strip()
 
-    recent_cmd = False
     cmd_ts = st.get("command_ts")
+    recent_cmd = False
     if cmd_ts:
-        recent_cmd = (time.time() - cmd_ts) < 5.0
+        recent_cmd = (time.time() - cmd_ts) < 20.0
+
+    if state_u in ("2", "3", "4"):
+        return True
+
+    if state_u == "5":
+        return False
 
     active = any(k in rs for k in (
         "EXECUTION_ACTIVE",
@@ -302,30 +401,36 @@ def should_be_moving(st: dict, pos: Optional[int], target: Optional[int], run_st
         "DONE",
     )) or ("DONE" in state_u)
 
-    waiting = any(k in state_u for k in ("NOT_USED", "WAIT_FOR_POWER"))
-
-    # Sonderfall STOP/CURRENT
     if st.get("stop_in_progress", False):
-        if active or (recent_cmd and waiting):
-            return True
+        stop_request_pos = st.get("stop_request_pos")
+
+        if pos is not None and target is not None and abs(pos - target) <= 1:
+            return False
+
+        if (
+            stop_request_pos is not None
+            and pos is not None
+            and pos != stop_request_pos
+        ):
+            return False
+
         if completed:
             return False
+
         return True
 
-    # Standardlogik
     if active:
         return True
 
-    if recent_cmd and waiting:
+    if pos is not None and target is not None:
+        if abs(pos - target) <= 1:
+            return False
         return True
 
-    if completed and pos is not None and target is not None and abs(pos - target) <= 1:
+    if completed:
         return False
 
-    if completed and (target is None or pos is None or abs(pos - target) <= 1):
-        return False
-
-    if recent_cmd and pos is not None and target is not None and abs(pos - target) > 1:
+    if recent_cmd and target is not None and pos is not None and abs(pos - target) > 1:
         return True
 
     return False
@@ -357,9 +462,7 @@ def get_node_state_key(node) -> str:
 
 def get_node_topic_id(node) -> str:
     """
-    Gibt den Identifier zurück, der im MQTT-Topic verwendet wird:
-    - node.name
-    - oder node.node_id
+    Identifier: node.name / node.node_id
     """
     if get_topic_identifier_mode() == "node_id":
         node_id = getattr(node, "node_id", None)
@@ -383,7 +486,7 @@ def build_node_topic(node, suffix: str) -> str:
 
 def node_matches_identifier(node, identifier: str) -> bool:
     """
-    Prüft, ob ein empfangener Identifier zu diesem Node passt.
+    Check whether a received identifier matches this node.
     """
     ident = str(identifier).strip()
     mode = get_topic_identifier_mode()
@@ -392,12 +495,10 @@ def node_matches_identifier(node, identifier: str) -> bool:
         node_id = getattr(node, "node_id", None)
         return node_id is not None and ident == str(node_id)
 
-    # name-Modus
     name = getattr(node, "name", None)
     if name and ident == sanitize_topic_part(name):
         return True
 
-    # Toleranter Fallback im name-Modus:
     node_id = getattr(node, "node_id", None)
     if node_id is not None and ident == str(node_id):
         return True
@@ -416,7 +517,7 @@ def find_node_by_identifier(identifier: str):
 
 async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
     """
-    Ermittelt Regenstatus indirekt über die Öffnungsbegrenzung.
+    Determine rain status indirectly via the opening limit.
     Heuristik wie in Home Assistant:
     limitation_min >= 89 => Regen erkannt
     """
@@ -502,12 +603,12 @@ def setup_logging() -> None:
         ch.setLevel(loglevel)
         root.addHandler(ch)
 
-    # Fremdlogger an unser Verbose-Setting koppeln
+    # Tie third-party loggers to the local verbose setting
     for logger_name in ("pyvlx", "asyncio"):
         lib_logger = logging.getLogger(logger_name)
         lib_logger.setLevel(loglevel)
 
-        # Falls Bibliotheken eigene Handler mitbringen:
+        # Remove handlers attached by libraries
         for h in list(lib_logger.handlers):
             try:
                 h.flush()
@@ -519,6 +620,7 @@ def setup_logging() -> None:
         lib_logger.propagate = True
 
     logging.info("Using config file: %s", CFG_PATH)
+    logging.info("Verbose logging: %s", "on" if CFG.get("verbose", False) else "off")
 
 
 setup_logging()
@@ -600,13 +702,11 @@ def mqtt_publish(topic: str, payload: Any, qos: int = 1, retain: bool = True):
 
 def classify_klf_error(exc: Exception) -> tuple[str, str]:
     """
-    Ordnet KLF-Verbindungs-/Authentifizierungsfehlern einen klaren Status zu.
-    Rückgabe:
+    KLF-Verbindungs-/Authentifizierungsfehlern ein klaren Status.
         (klf_state, klf_error_text)
     """
     txt = ""
 
-    # 1) Beschreibung bevorzugen, falls pyvlx sie als Attribut trägt
     try:
         desc = getattr(exc, "description", None)
         if desc:
@@ -614,21 +714,18 @@ def classify_klf_error(exc: Exception) -> tuple[str, str]:
     except Exception:
         pass
 
-    # 2) Normales str(exc)
     if not txt:
         try:
             txt = str(exc).strip()
         except Exception:
             txt = ""
 
-    # 3) repr(exc) als letzter sinnvoller Fallback
     if not txt:
         try:
             txt = repr(exc).strip()
         except Exception:
             txt = ""
 
-    # 4) Ganz harter Fallback
     if not txt:
         txt = "unknown klf error"
 
@@ -727,7 +824,7 @@ def submit_coro_from_thread(coro, description: str = ""):
 
 
 def publish_service_status():
-    """Publiziert den Zustand des Python-Dienstes selbst."""
+    """Publish Python service state."""
     try:
         mqtt_publish_if_changed(
             f"{CFG['root_topic']}/service_status",
@@ -987,7 +1084,11 @@ def mqtt_on_message(client, userdata, msg):
     identifier = "/".join(parts[:-1]).strip()
     node = find_node_by_identifier(identifier)
     if node is None:
-        logging.warning("No matching node found for topic identifier '%s' (topic=%s)", identifier, topic)
+        logging.warning(
+            "No matching node found for topic identifier '%s' (topic=%s)",
+            identifier,
+            topic,
+        )
         return
 
     stkey = get_node_state_key(node)
@@ -1000,34 +1101,113 @@ def mqtt_on_message(client, userdata, msg):
 
     try:
         if value_u in ("UP", "OPEN"):
+            st["command_ts"] = time.time()
+            st["pending_target"] = 0
+            st["stop_in_progress"] = False
+
+            old_task = st.get("stop_finalize_task")
+            if old_task:
+                try:
+                    old_task.cancel()
+                except Exception:
+                    pass
+            st["stop_finalize_task"] = None
+            st["stop_request_pos"] = None
+            st["stop_position_changed"] = False
+
+            if not st.get("moving", False):
+                st["moving"] = True
+                mqtt_publish_if_changed(
+                    build_node_topic(node, "moving"),
+                    "true",
+                )
+
             submit_coro_from_thread(
                 node.open(wait_for_completion=False),
                 description=f"open:{st.get('topic_id') or getattr(node, 'name', '')}",
             )
-            st["command_ts"] = time.time()
-            st["pending_target"] = 0
 
         elif value_u in ("DOWN", "CLOSE"):
+            st["command_ts"] = time.time()
+            st["pending_target"] = 100
+            st["stop_in_progress"] = False
+            
+            old_task = st.get("stop_finalize_task")
+            if old_task:
+                try:
+                    old_task.cancel()
+                except Exception:
+                    pass
+            st["stop_finalize_task"] = None
+            st["stop_request_pos"] = None
+            st["stop_position_changed"] = False
+
+            if not st.get("moving", False):
+                st["moving"] = True
+                mqtt_publish_if_changed(
+                    build_node_topic(node, "moving"),
+                    "true",
+                )
+
             submit_coro_from_thread(
                 node.close(wait_for_completion=False),
                 description=f"close:{st.get('topic_id') or getattr(node, 'name', '')}",
             )
-            st["command_ts"] = time.time()
-            st["pending_target"] = 100
 
         elif value_u == "STOP":
+            st["command_ts"] = time.time()
+            st["stop_in_progress"] = True
+            st["pending_target"] = None
+            st["stop_request_pos"] = st.get("last_pos")
+            st["stop_position_changed"] = False
+
+            # Cancel any previous STOP finalizer
+            old_task = st.get("stop_finalize_task")
+            if old_task:
+                try:
+                    old_task.cancel()
+                except Exception:
+                    pass
+
+            if not st.get("moving", False):
+                st["moving"] = True
+                mqtt_publish_if_changed(
+                    build_node_topic(node, "moving"),
+                    "true",
+                )
+
             submit_coro_from_thread(
                 node.stop(),
                 description=f"stop:{st.get('topic_id') or getattr(node, 'name', '')}",
             )
-            st["command_ts"] = time.time()
+
+            # Robust STOP finalizer
+            st["stop_finalize_task"] = submit_coro_from_thread(
+                finalize_stop_after_delay(node, stkey),
+                description=f"finalize_stop:{st.get('topic_id') or getattr(node, 'name', '')}",
+            )
 
         else:
             try:
                 pos = int(float(payload))
             except Exception:
-                logging.warning("Unsupported command payload '%s' for topic %s", payload, topic)
+                logging.warning(
+                    "Unsupported command payload '%s' for topic %s",
+                    payload,
+                    topic,
+                )
                 return
+
+            st["command_ts"] = time.time()
+            st["pending_target"] = pos
+            st["stop_in_progress"] = False
+
+            if not st.get("moving", False):
+                st["moving"] = True
+                mqtt_publish_if_changed(
+                    build_node_topic(node, "moving"),
+                    "true",
+                )
 
             submit_coro_from_thread(
                 safe_set_position(
@@ -1171,9 +1351,7 @@ async def connect_pyvlx(stop_event: asyncio.Event):
 
 
 async def poll_rain_sensors_once():
-    """
-    Pollt den indirekten Regenstatus genau einmal.
-    """
+    """Poll rain status once."""
     logging.debug("poll_rain_sensors_once: start")
 
     for node in getattr(pyvlx, "nodes", []):
@@ -1182,22 +1360,6 @@ async def poll_rain_sensors_once():
 
         node_name = getattr(node, "name", "")
         node_id = getattr(node, "node_id", None)
-
-        type_candidates = {
-            "node_type": getattr(node, "node_type", None),
-            "type": getattr(node, "type", None),
-            "sub_type": getattr(node, "sub_type", None),
-            "node_type_subtype": getattr(node, "node_type_subtype", None),
-            "product_group": getattr(node, "product_group", None),
-            "product_type": getattr(node, "product_type", None),
-        }
-
-        logging.debug(
-            "poll_rain_sensors_once: node=%s node_id=%s type_candidates=%r",
-            node_name,
-            node_id,
-            type_candidates,
-        )
 
         if not str(node_name).lower().startswith("fenster"):
             logging.debug(
@@ -1289,6 +1451,16 @@ async def publish_initial_snapshot():
                 "true" if st.get("moving") else "false",
             )
 
+            if not CFG.get("verbose", False):
+                topic_id = st.get("topic_id") or getattr(node, "name", "") or stkey
+                if pos is not None:
+                    logging.info("startup %s position: %s", topic_id, pos)
+                logging.info(
+                    "startup %s moving: %s",
+                    topic_id,
+                    "true" if st.get("moving") else "false",
+                )
+
         except Exception:
             logging.exception(
                 "publish_initial_snapshot failed for %s",
@@ -1320,12 +1492,82 @@ async def moving_watchdog():
                 if now - cmd_ts > CFG["moving_timeout"]:
                     st["moving"] = False
                     st["pending_target"] = None
-                    mqtt_publish(f"{CFG['root_topic']}/{name}/moving", "false")
                     node_label = st.get("topic_id") or st.get("node_name") or stkey
+                    mqtt_publish(f"{CFG['root_topic']}/{node_label}/moving", "false")
                     logging.warning("watchdog: %s forced to moving=false after timeout", node_label)
         except Exception:
             logging.exception("moving_watchdog error")
         await asyncio.sleep(1.0)
+
+
+async def finalize_stop_after_delay(node, stkey: str, delay: float = 1.5, confirm_gap: float = 0.5):
+    """
+    Robuster STOP-Finalizer
+    """
+    try:
+        await asyncio.sleep(delay)
+
+        st = NODE_STATE.setdefault(stkey, {})
+        if not st.get("stop_in_progress", False):
+            return
+
+        pos1 = parse_position(node)
+
+        await asyncio.sleep(confirm_gap)
+
+        st = NODE_STATE.setdefault(stkey, {})
+        if not st.get("stop_in_progress", False):
+            return
+
+        pos2 = parse_position(node)
+
+        final_pos = pos2 if pos2 is not None else pos1
+        stop_request_pos = st.get("stop_request_pos")
+
+        stable = (pos1 is not None and pos2 is not None and pos1 == pos2)
+        changed_since_stop = (
+            stop_request_pos is not None
+            and final_pos is not None
+            and final_pos != stop_request_pos
+        )
+
+        if stable or changed_since_stop:
+            prev_moving = bool(st.get("moving", False))
+
+            if final_pos is not None:
+                last_pub = st.get("last_published_pos")
+                if final_pos != last_pub:
+                    st["last_published_pos"] = final_pos
+                    st["last_pos"] = final_pos
+                    st["last_target"] = final_pos
+                    mqtt_publish_if_changed(
+                        build_node_topic(node, "position"),
+                        final_pos,
+                    )
+
+            st["moving"] = False
+            st["stop_in_progress"] = False
+            st["pending_target"] = None
+            st["stop_request_pos"] = None
+            st["stop_position_changed"] = False
+
+            if prev_moving:
+                mqtt_publish_if_changed(
+                    build_node_topic(node, "moving"),
+                    "false",
+                )
+                logging.info(
+                    "%s moving: False (STOP finalizer pos=%s stable=%s changed_since_stop=%s)",
+                    st.get("topic_id") or st.get("node_name") or stkey,
+                    final_pos,
+                    stable,
+                    changed_since_stop,
+                )
+
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        logging.exception("finalize_stop_after_delay failed")
 
 
 # ============================================================
@@ -1347,6 +1589,7 @@ async def on_node_update(node):
 
         node_label = st.get("topic_id") or st.get("node_name") or stkey
 
+        # Publish position only on change
         if pos is not None:
             last_pub = st.get("last_published_pos")
             if pos != last_pub:
@@ -1363,7 +1606,7 @@ async def on_node_update(node):
         if run_status:
             st["last_run_status"] = run_status
 
-        # STOP/CURRENT / COMMAND_OVERRULED sauber behandeln
+        # StatusReply beobachten (z. B. STOP / OVERRULED)
         is_overruled = False
         last_reply_str = ""
 
@@ -1375,77 +1618,114 @@ async def on_node_update(node):
             last_reply_str = ""
             is_overruled = False
 
-        if "OVERRULED" in last_reply_str and st.get("stop_in_progress", False):
-            logging.debug("%s: COMMAND_OVERRULED during stop_in_progress", node_label)
+        prev_moving = bool(st.get("moving", False))
 
-        try:
-            raw_target_field = getattr(node.target, "position_percent", None)
-            if raw_target_field is not None and str(raw_target_field).upper().strip() == "CURRENT":
-                logging.debug("%s: CURRENT target observed", node_label)
-        except Exception:
-            pass
+        if not st.get("stop_in_progress", False):
+            old_task = st.get("stop_finalize_task")
+            if old_task:
+                try:
+                    old_task.cancel()
+                except Exception:
+                    pass
+                st["stop_finalize_task"] = None
 
-        # Sonderfall STOP
+        # Base decision
         if st.get("stop_in_progress", False) and is_overruled:
             moving = True
         else:
-            moving = should_be_moving(st, pos, target, run_status, state_str)
-
-        prev_moving = st.get("moving", False)
-        st["moving"] = moving
-
-        # STOP-Übergang sauber abschließen
-        rs_upper = str(run_status or "").upper()
-        if st.get("stop_in_progress", False):
-            raw_target_field = None
-            try:
-                raw_target_field = getattr(node.target, "position_percent", None)
-            except Exception:
-                raw_target_field = None
-
-            raw_target_upper = str(raw_target_field).upper().strip() if raw_target_field is not None else ""
-
-            final_stop_done = (
-                pos is not None
-                and (
-                    "DONE" in state_str
-                    or "COMPLETED" in rs_upper
-                    or "COMMAND_COMPLETED_OK" in rs_upper
-                )
-                and raw_target_upper != "CURRENT"
+            moving = should_be_moving(
+                st,
+                pos,
+                target,
+                run_status,
+                state_str,
             )
 
-            if final_stop_done:
+        rs_upper = str(run_status or "").upper()
+        state_u = str(state_str or "").upper().strip()
+
+        reached_target = (
+            pos is not None and target is not None and abs(pos - target) <= 1
+        )
+
+        explicit_done = (
+            state_u == "5"
+            or "DONE" in state_u
+            or "COMPLETED" in rs_upper
+            or "COMMAND_COMPLETED_OK" in rs_upper
+        )
+
+        stop_request_pos = st.get("stop_request_pos")
+
+        # A changed stable position after STOP means STOP completed
+        if (
+            st.get("stop_in_progress", False)
+            and stop_request_pos is not None
+            and pos is not None
+            and pos != stop_request_pos
+        ):
+            st["stop_position_changed"] = True
+
+        stop_finished = (
+            st.get("stop_in_progress", False)
+            and (
+                reached_target
+                or explicit_done
+                or st.get("stop_position_changed", False)
+            )
+        )
+
+        if stop_finished:
+            st["moving"] = False
+            st["stop_in_progress"] = False
+            st["pending_target"] = None
+            st["stop_request_pos"] = None
+            st["stop_position_changed"] = False
+            if pos is not None:
                 st["last_target"] = pos
-                st["pending_target"] = None
-                st["stop_in_progress"] = False
+            moving = False
 
-        # Wenn Ziel erreicht/completed -> pending_target löschen
-        if pos is not None and target is not None:
-            if abs(pos - target) <= 1 and (
-                "DONE" in state_str
-                or "COMPLETED" in rs_upper
-                or "COMMAND_COMPLETED_OK" in rs_upper
-            ):
-                st["pending_target"] = None
+        elif reached_target or explicit_done:
+            st["moving"] = False
+            st["pending_target"] = None
+            st["stop_in_progress"] = False
+            st["stop_request_pos"] = None
+            st["stop_position_changed"] = False
+            if pos is not None:
+                st["last_target"] = pos
+            moving = False
 
-        if prev_moving != moving:
+        else:
+            st["moving"] = moving
+
+        # Publish moving only on change
+        if prev_moving != st["moving"]:
             mqtt_publish_if_changed(
                 build_node_topic(node, "moving"),
-                "true" if st.get("moving") else "false",
+                "true" if st["moving"] else "false",
             )
-            logging.info(
-                "%s moving: %s (run_status=%s target=%s pos=%s)",
-                node_label,
-                moving,
-                run_status,
-                target,
-                pos,
-            )
+            if CFG.get("verbose", False):
+                logging.info(
+                    "%s moving: %s (state=%s run_status=%s target=%s pos=%s pending_target=%s stop_in_progress=%s stop_request_pos=%s stop_position_changed=%s)",
+                    node_label,
+                    st["moving"],
+                    state_str,
+                    run_status,
+                    target,
+                    pos,
+                    st.get("pending_target"),
+                    st.get("stop_in_progress"),
+                    st.get("stop_request_pos"),
+                    st.get("stop_position_changed"),
+                )
+            else:
+                if target is not None:
+                    logging.info("%s moving: %s (pos=%s target=%s)", node_label, st["moving"], pos, target)
+                else:
+                    logging.info("%s moving: %s (pos=%s)", node_label, st["moving"], pos)
 
     except Exception:
         logging.exception("on_node_update")
-
 
 
 # ============================================================
@@ -1470,7 +1750,7 @@ async def safe_set_position(device, value: int, name: str, st: dict):
     except Exception:
         logging.exception("safe_set_position failed for %s", name)
 
-    # Fallback für Grenzen
+    # Fallback for boundary values
     try:
         if value == 0:
             await device.open(wait_for_completion=False)
@@ -1487,9 +1767,9 @@ async def safe_set_position(device, value: int, name: str, st: dict):
 
 async def preventive_recovery_task():
     """
-    Optionaler präventiver Recovery-Request alle X Stunden.
-    Standardmäßig deaktiviert (preventive_recovery_hours = 0).
-    Nur wenn KLF verbunden ist und gerade nichts fährt.
+    Optional preventive recovery request every X hours.
+    Disabled by default (preventive_recovery_hours = 0).
+    Only if KLF is connected and nothing is moving.
     """
     hours = float(CFG.get("preventive_recovery_hours", 0.0))
     if hours <= 0:
@@ -1619,11 +1899,6 @@ async def main():
         except Exception:
             logging.exception("publish_node_metadata failed during startup")
 
-        try:
-            await poll_rain_sensors_once()
-        except Exception:
-            logging.exception("initial rain poll failed")
-
         tasks = [
             asyncio.create_task(publish_initial_snapshot()),
             asyncio.create_task(publish_health_task()),
@@ -1632,7 +1907,7 @@ async def main():
             asyncio.create_task(preventive_recovery_task()),
         ]
 
-        # Hauptloop: nur auf Stop warten
+        # Main loop: wait until stop is requested
         while not stop_event.is_set():
             await asyncio.sleep(0.5)
 
@@ -1663,7 +1938,7 @@ async def main():
         except Exception:
             pass
 
-        # pyvlx sauber trennen, aber OHNE Gateway-Reboot
+        # Disconnect pyvlx cleanly without rebooting the gateway
         try:
             if pyvlx is not None:
                 conn = getattr(pyvlx, "connection", None)
