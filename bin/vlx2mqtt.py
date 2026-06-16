@@ -5,6 +5,7 @@ vlx2mqtt.py
 """
 
 import configparser
+import concurrent.futures
 import asyncio
 import json
 import logging
@@ -816,6 +817,8 @@ def submit_coro_from_thread(coro, description: str = ""):
     def _done_callback(fut):
         try:
             fut.result()
+        except (asyncio.CancelledError, concurrent.futures.CancelledError):
+            return
         except Exception:
             logging.exception("Coroutine failed: %s", description or coro)
 
