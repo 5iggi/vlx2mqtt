@@ -34,22 +34,10 @@ Das Plugin verbindet sich direkt mit der KLF200, liest Positionen und Zustände 
   - [Empfehlung](#empfehlung)
   - [Warum gibt es einen präventiven Recovery-Trigger?](#warum-gibt-es-einen-präventiven-recovery-trigger)
     - [Empfohlene Verwendung](#empfohlene-verwendung)
-    - [Hintergrund / Quellen](#hintergrund--quellen)
 - [Logging](#logging)
 - [Dateien und Verzeichnisse](#dateien-und-verzeichnisse)
-- [Weboberfläche](#weboberfläche)
-- [index.cgi API](#indexcgi-api)
-  - [Frontend](#frontend)
-  - [AJAX-Endpunkte](#ajax-endpunkte)
-    - [Service-Status abfragen](#service-status-abfragen)
-    - [Dienst neu starten](#dienst-neu-starten)
-    - [Dienst stoppen](#dienst-stoppen)
-    - [MQTT-Topic einmalig lesen](#mqtt-topic-einmalig-lesen)
-  - [Optional: Secure PIN](#optional-secure-pin)
-  - [Unterstützte `ajax`-Werte](#unterstützte-ajax-werte)
 - [Bekannte Eigenheiten](#bekannte-eigenheiten)
 - [Sinnvolle Tests](#sinnvolle-tests)
-- [Deinstallation](#deinstallation)
 - [Status des Projekts](#status-des-projekts)
 - [Lizenz](#lizenz)
 - [Autor](#autor)
@@ -75,7 +63,8 @@ Das Plugin verbindet sich direkt mit der KLF200, liest Positionen und Zustände 
 - Veröffentlicht optional einen Regenstatus für unterstützte Fenster per MQTT
 - Optionaler externer **Recovery-/Power-Cycle-Trigger** bei KLF-Verbindungsproblemen
 - Optionaler **präventiver Recovery-Trigger** nach konfigurierbarer Laufzeit
-- Betrieb als `systemd`-Dienst unter LoxBerry
+- Startup-Snapshot für Position und `moving`
+- Aussagekräftiges kompakteres Logging bei `verbose = 0`
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -106,14 +95,7 @@ Vorteile dieser Entscheidung:
 - **VELUX KLF200 / Homecontrol IO**
 - MQTT-Broker
 - Netzwerkzugriff zwischen LoxBerry und KLF200
-
-Während der Plugin-Installation werden automatisch:
-
-- die Plugin-Dateien in die LoxBerry-Verzeichnisse kopiert
-- die Konfiguration unter `config/plugins/vlx2mqtt/` angelegt
-- eine Python-Umgebung unter `data/plugins/vlx2mqtt/venv` erstellt
-- die Python-Abhängigkeiten installiert
-- der `systemd`-Dienst `vlx2mqtt.service` erzeugt und aktiviert
+- Python 3 mit `pyvlx` und `paho-mqtt`
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -121,7 +103,7 @@ Während der Plugin-Installation werden automatisch:
 
 ## Konfiguration
 
-Die zentrale Konfigurationsdatei liegt unter:
+Die zentrale Konfigurationsdatei liegt typischerweise unter:
 
 ```text
 /opt/loxberry/config/plugins/vlx2mqtt/vlx2mqtt.cfg
@@ -132,7 +114,7 @@ Die zentrale Konfigurationsdatei liegt unter:
 ```ini
 [vlx2mqtt]
 klf_host = VELUX-KLF-DE3B.fritz.box
-klf_pw = DEIN_KLF_PASSWORT
+klf_pw = KLF_WiFi_PASSWORT
 mqtt_host = 127.0.0.1
 mqtt_port = 1883
 mqtt_user = loxberry
@@ -145,16 +127,16 @@ backoff_max = 30.0
 verbose = 0
 logfile = /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 
-topic_identifier = node_id
-rain_poll_interval = 60
-publish_rain_raw_limit = true
+topic_identifier = name
+rain_poll_interval = 300
+publish_rain_raw_limit = false
 
-external_recovery_enabled = true
+external_recovery_enabled = false
 external_recovery_threshold = 4
 external_recovery_cooldown = 1800
 external_recovery_grace = 120
 external_recovery_topic = vlx2mqtt/recovery/powercycle_required
-preventive_recovery_hours = 24
+preventive_recovery_hours = 0
 ```
 
 ### Wichtige Parameter
@@ -162,21 +144,27 @@ preventive_recovery_hours = 24
 | Parameter | Bedeutung |
 |---|---|
 | `klf_host` | Hostname oder IP-Adresse der KLF200 |
-| `klf_pw` | WiFi-Passwort der KLF200 |
+| `klf_pw` | Passwort der KLF200 |
 | `mqtt_host` | MQTT-Broker |
+| `mqtt_port` | MQTT-Port |
+| `mqtt_user` | MQTT-Benutzername |
+| `mqtt_pw` | MQTT-Passwort |
 | `root_topic` | Oberstes MQTT-Topic |
+| `initial_delay` | Verzögerung bis zum initialen Snapshot |
+| `connect_timeout` | Timeout für den KLF-Verbindungsaufbau |
 | `moving_timeout` | Watchdog-Zeit für Bewegungen |
 | `backoff_max` | Maximale Reconnect-Wartezeit |
 | `verbose` | `1` = Debug-Logging, `0` = kompakter Log |
+| `logfile` | Pfad zur Logdatei |
 | `topic_identifier` | MQTT-Identifier pro Node: `name` oder `node_id` |
 | `rain_poll_interval` | Polling-Intervall für den Regensensor in Sekunden |
 | `publish_rain_raw_limit` | veröffentlicht zusätzlich den Rohwert `rain_raw_limit` |
 | `external_recovery_enabled` | aktiviert externen Recovery-/Power-Cycle-Trigger |
-| `external_recovery_threshold` | Anzahl aufeinanderfolgender `klf_connection_refused`, bevor Recovery angefordert wird |
+| `external_recovery_threshold` | Anzahl relevanter Fehler bis Recovery angefordert wird |
 | `external_recovery_cooldown` | Mindestabstand zwischen zwei Recovery-Anforderungen |
 | `external_recovery_grace` | Wartezeit nach externer Recovery |
 | `external_recovery_topic` | MQTT-Topic für den externen Power-Cycle-Trigger |
-| `preventive_recovery_hours` | präventiver Recovery-Trigger nach X Stunden; veröffentlicht eine vorsorgliche externe Reboot-/Power-Cycle-Anforderung für die KLF200, um Verbindungsproblemen vorzubeugen (`0` = deaktiviert) |
+| `preventive_recovery_hours` | präventiver Recovery-Trigger nach X Stunden (`0` = deaktiviert) |
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -245,11 +233,11 @@ Ein **stabiler Detailstatus** für Automatisierung, Diagnose und History.
 
 `status_detail` ist **dienstorientiert**:
 
-- Wenn der Dienst **nicht** läuft, liefert er z. B.:
+- wenn der Dienst **nicht** läuft, z. B.:
   - `service_starting`
   - `service_stopped`
   - `service_lost`
-- Wenn der Dienst läuft, entspricht er dem aktuellen KLF-Status, z. B.:
+- wenn der Dienst läuft, entspricht er dem aktuellen KLF-Status, z. B.:
   - `klf_connected`
   - `klf_connecting`
   - `klf_connection_refused`
@@ -259,7 +247,7 @@ Ein **stabiler Detailstatus** für Automatisierung, Diagnose und History.
 Typische Verwendung:
 
 - klare Auswertung in Loxone / Node-RED
-- Historie „war der Dienst aus oder war die KLF nicht erreichbar?"
+- Historie „war der Dienst aus oder war die KLF nicht erreichbar?“
 - Fehlerursachen unterscheiden
 
 ---
@@ -268,7 +256,7 @@ Typische Verwendung:
 <a id="root_topicstatus_live"></a>
 Ein **roher Live-Status** der KLF-Verbindung.
 
-`status_live` bildet immer direkt den aktuellen KLF-Zustand ab, also z. B.:
+`status_live` bildet immer direkt den aktuellen KLF-Zustand ab, z. B.:
 
 - `starting`
 - `klf_connecting`
@@ -281,7 +269,7 @@ Im Gegensatz zu `status_detail` ist `status_live` **nicht service-abstrahiert**,
 Typische Verwendung:
 
 - Live-Diagnose
-- Technisches Monitoring
+- technisches Monitoring
 - Anzeige aktueller Übergangszustände
 
 ---
@@ -318,7 +306,7 @@ status_live = starting
 
 ### `<root_topic>/<Identifier>/position`
 Rückmeldung der aktuellen Geräteposition.  
-Der Wert wird aus den von der KLF / `pyvlx` gelieferten Zustandsdaten übernommen.
+Der Wert wird aus den von KLF / `pyvlx` gelieferten Zustandsdaten übernommen.
 
 ### `<root_topic>/<Identifier>/set`
 Befehlseingang für die Steuerung des Geräts.  
@@ -373,16 +361,16 @@ Unterstützte Werte:
 
 Über `topic_identifier` kann festgelegt werden, welcher Identifier im MQTT-Topic verwendet wird:
 
-- `name`  → Geräte-/Knotennamen, z. B. `Rollladen_links`
+- `name` → Geräte-/Knotennamen, z. B. `Rollladen_links`
 - `node_id` → numerische KLF-Node-ID, z. B. `2`
 
 ### Beispiel-Zuordnung
 
 ```text
-Fenster_links   -> 0
-Fenster_rechts  -> 1
-Rollladen_links -> 2
-Rollladen_rechts-> 3
+Fenster_links    -> 0
+Fenster_rechts   -> 1
+Rollladen_links  -> 2
+Rollladen_rechts -> 3
 ```
 
 ### Wichtiger Hinweis beim Umschalten
@@ -413,13 +401,15 @@ vlx2mqtt/1/rain
 vlx2mqtt/1/rain_raw_limit
 ```
 
+> Je nach `pyvlx`-/Node-Repräsentation stehen die dafür benötigten Informationen nicht immer zur Verfügung.
+
 [Zurück zum Inhalt](#inhalt)
 
 ---
 
 ## Recovery / Power-Cycle
 
-Bei wiederholtem Fehlerzustand
+Bei wiederholten Fehlerzuständen wie z. B.
 
 ```text
 klf_connection_refused
@@ -446,13 +436,7 @@ Damit kann z. B. in **Loxone** eine schaltbare Steckdose genutzt werden, um die 
 
 ## Warum gibt es einen präventiven Recovery-Trigger?
 
-Die KLF200 ist in der Praxis nicht immer dauerhaft stabil, wenn viele oder wiederholte Verbindungsaufbauten stattfinden.  
-Aus Community-Berichten rund um Home Assistant und `pyvlx` ergibt sich immer wieder folgendes Muster:
-
-- die KLF200 nimmt nach einer gewissen Laufzeit oder nach mehreren TCP-/SSL-Verbindungen keine neuen Verbindungen mehr sauber an
-- SSL-Handshakes können hängen bleiben
-- es treten `Connect call failed` oder `Connection refused` auf
-- in manchen Fällen hilft danach nur noch ein **Power-Cycle** oder ein gezielter **Gateway-Reboot**
+Die KLF200 ist in der Praxis nicht immer dauerhaft stabil, wenn viele oder wiederholte Verbindungsaufbauten stattfinden.
 
 Aus diesem Grund unterstützt VLX2MQTT optional einen **präventiven Recovery-Trigger**.
 
@@ -469,26 +453,6 @@ Wichtig:
 - Für den normalen Betrieb vorzugsweise **reaktive Recovery** bei echten Fehlern verwenden
 - Präventive Recovery nur bewusst aktivieren
 - Präventive Trigger eher konservativ wählen (z. B. 24 h oder mehr)
-
-### Hintergrund / Quellen
-
-Die Funktion basiert auf regelmäßig berichteten KLF200-Problemen in der Praxis, unter anderem:
-
-- KLF200 nimmt nach mehreren TCP/IP-Verbindungen keine neuen Verbindungen mehr an
-- Workaround über `velux.reboot_gateway`
-- Power-Cycle als zuverlässigste Wiederherstellung
-- `pyvlx`-Berichte über festlaufende Verbindungen bei längerer Laufzeit
-
-Beispielquellen:
-
-- Home Assistant Community: Velux KLF 200 integration  
-  https://community.home-assistant.io/t/velux-klf-200-integration/677087
-- Home Assistant Community: Restart velux integration?  
-  https://community.home-assistant.io/t/restart-velux-integration/531585
-- pyvlx GitHub Issue: Keeping connection open freezes KLF  
-  https://github.com/Julius2342/pyvlx/issues/30
-- Home Assistant Velux documentation  
-  https://www.home-assistant.io/integrations/velux/
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -664,9 +628,8 @@ Unbekannte Aktionen werden mit einer JSON-Fehlermeldung quittiert.
 
 - Beim Start kann kurz ein alter `moving=true`-Zustand aus retained MQTT-Daten sichtbar sein, bevor der Initialstatus ihn korrigiert.
 - Beim Umschalten zwischen `topic_identifier = name` und `topic_identifier = node_id` können alte retained Topics im Broker verbleiben.
-- Während der Node-Erkennung kann `NodeUpdater: Received state frame for unknown node_id ...` kurz auftauchen. Das ist in der Regel unkritisch.
-- Heartbeat-/Statusabfragen können Target-Werte im Log aktualisieren, ohne dass ein echter Fahrbefehl ausgelöst wurde.
-- Im `node_id`-Modus abonniert das Plugin eingehend weiterhin mit Wildcard `<root_topic>/+/set`; die ausgehenden Status-Topics enthalten jedoch die numerische `node_id`.
+- KLF-interne Zeitstempel in empfangenen Frames können von der realen Systemzeit abweichen.
+- Rain-Polling ist abhängig von der pyvlx-/Node-Unterstützung.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -713,7 +676,6 @@ Schwerpunkt ist eine stabile MQTT-Anbindung der KLF200 unter LoxBerry mit klarer
 ## Lizenz
 
 MIT License
-
 
 [Zurück zum Inhalt](#inhalt)
 
