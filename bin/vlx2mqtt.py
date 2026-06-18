@@ -78,7 +78,6 @@ def apply_pyvlx_patch():
         logging.exception("Failed to apply pyvlx patch")
 
 
-apply_pyvlx_patch()
 
 # ============================================================
 # Konfiguration
@@ -625,6 +624,7 @@ def setup_logging() -> None:
 
 
 setup_logging()
+apply_pyvlx_patch()
 logging.info("Starting vlx2mqtt_rebuild")
 
 # ============================================================
@@ -805,7 +805,10 @@ def submit_coro_from_thread(coro, description: str = ""):
     global MAIN_LOOP
 
     if MAIN_LOOP is None or MAIN_LOOP.is_closed():
-        logging.error("submit_coro_from_thread: no running MAIN_LOOP for %s", description or coro)
+        logging.error(
+            "submit_coro_from_thread: no running MAIN_LOOP for %s",
+            description or coro,
+        )
         try:
             coro.close()
         except Exception:
@@ -814,13 +817,71 @@ def submit_coro_from_thread(coro, description: str = ""):
 
     future = asyncio.run_coroutine_threadsafe(coro, MAIN_LOOP)
 
+    def _parse_description(desc: str):
+        """
+        Zerlegt Beschreibungen wie:
+          open:Fenster_links
+          close:Fenster_rechts
+          stop:Fenster_links
+          finalize_stop:Fenster_links
+        in (cmd, label).
+        """
+        txt = str(desc or "").strip()
+        if ":" not in txt:
+            return txt.upper(), ""
+
+        cmd, label = txt.split(":", 1)
+        return cmd.strip().upper(), label.strip()
+
+    def _compact_error_from_description(desc: str) -> str:
+        """
+        Wandelt interne Beschreibungen in kompakte Logtexte für verbose=0 um.
+        """
+        cmd, label = _parse_description(desc)
+
+        if cmd == "OPEN":
+            return f"{label} command failed: OPEN"
+        if cmd == "CLOSE":
+            return f"{label} command failed: CLOSE"
+        if cmd == "STOP":
+            return f"{label} command failed: STOP"
+        if cmd == "FINALIZE_STOP":
+            return f"{label} STOP finalizer failed"
+
+        return f"Coroutine failed: {desc or coro}"
+
+    def _compact_success_from_description(desc: str) -> Optional[str]:
+        """
+        Liefert für einfache Betriebslogs eine kompakte Erfolgszeile zurück.
+        """
+        cmd, label = _parse_description(desc)
+
+        if cmd == "OPEN":
+            return f"{label} command ok: OPEN"
+        if cmd == "CLOSE":
+            return f"{label} command ok: CLOSE"
+        if cmd == "STOP":
+            return f"{label} command ok: STOP"
+
+        return None
+
     def _done_callback(fut):
         try:
             fut.result()
+
+            if not CFG.get("verbose", False):
+                success_msg = _compact_success_from_description(description)
+                if success_msg:
+                    logging.info(success_msg)
+
         except (asyncio.CancelledError, concurrent.futures.CancelledError):
             return
+
         except Exception:
-            logging.exception("Coroutine failed: %s", description or coro)
+            if CFG.get("verbose", False):
+                logging.exception("Coroutine failed: %s", description or coro)
+            else:
+                logging.error(_compact_error_from_description(description))
 
     future.add_done_callback(_done_callback)
     return future
@@ -1489,17 +1550,33 @@ async def moving_watchdog():
             for stkey, st in list(NODE_STATE.items()):
                 if not st.get("moving"):
                     continue
+
                 cmd_ts = st.get("command_ts")
                 if not cmd_ts:
                     continue
+
                 if now - cmd_ts > CFG["moving_timeout"]:
                     st["moving"] = False
                     st["pending_target"] = None
+                    st["stop_in_progress"] = False
+                    st["stop_request_pos"] = None
+                    st["stop_position_changed"] = False
+
                     node_label = st.get("topic_id") or st.get("node_name") or stkey
-                    mqtt_publish(f"{CFG['root_topic']}/{node_label}/moving", "false")
-                    logging.warning("watchdog: %s forced to moving=false after timeout", node_label)
+
+                    mqtt_publish_if_changed(
+                        f"{CFG['root_topic']}/{node_label}/moving",
+                        "false",
+                    )
+
+                    logging.warning(
+                        "watchdog: %s forced to moving=false after timeout",
+                        node_label,
+                    )
+
         except Exception:
             logging.exception("moving_watchdog error")
+
         await asyncio.sleep(1.0)
 
 
@@ -1593,9 +1670,12 @@ async def on_node_update(node):
         node_label = st.get("topic_id") or st.get("node_name") or stkey
 
         # Publish position only on change
+        position_changed = False
+
         if pos is not None:
             last_pub = st.get("last_published_pos")
             if pos != last_pub:
+                position_changed = True
                 st["last_published_pos"] = pos
                 st["last_pos"] = pos
                 mqtt_publish_if_changed(
@@ -1701,7 +1781,7 @@ async def on_node_update(node):
         else:
             st["moving"] = moving
 
-        # Publish moving only on change
+# Publish moving only on change
         if prev_moving != st["moving"]:
             mqtt_publish_if_changed(
                 build_node_topic(node, "moving"),
@@ -1723,48 +1803,106 @@ async def on_node_update(node):
                 )
             else:
                 if target is not None:
-                    logging.info("%s moving: %s (pos=%s target=%s)", node_label, st["moving"], pos, target)
+                    logging.info(
+                        "%s moving: %s (pos=%s target=%s)",
+                        node_label,
+                        st["moving"],
+                        pos,
+                        target,
+                    )
                 else:
-                    logging.info("%s moving: %s (pos=%s)", node_label, st["moving"], pos)
+                    logging.info(
+                        "%s moving: %s (pos=%s)",
+                        node_label,
+                        st["moving"],
+                        pos,
+                    )
+
+        if (
+            not CFG.get("verbose", False)
+            and position_changed
+            and pos is not None
+            and (stop_finished or reached_target or explicit_done or not st["moving"])
+        ):
+            if target is not None:
+                logging.info("%s position: %s (target=%s)", node_label, pos, target)
+            else:
+                logging.info("%s position: %s", node_label, pos)
 
     except Exception:
         logging.exception("on_node_update")
+
 
 
 # ============================================================
 # Befehle
 # ============================================================
 async def safe_set_position(device, value: int, name: str, st: dict):
+    node_label = st.get("topic_id") or name
+
     v = scale_to_device(value)
     if v is None:
-        logging.warning("safe_set_position: invalid value for %s: %s", name, value)
-        mqtt_publish(f"{CFG['root_topic']}/{name}/set/ack", f"ERROR:INVALID:{value}", qos=1, retain=False)
+        logging.warning("safe_set_position: invalid value for %s: %s", node_label, value)
+        mqtt_publish(
+            f"{CFG['root_topic']}/{name}/set/ack",
+            f"ERROR:INVALID:{value}",
+            qos=1,
+            retain=False,
+        )
         return False
 
     try:
         await device.set_position(v, wait_for_completion=False)
-        logging.debug(
-            "safe_set_position ok for %s: requested=%s device=%s",
-            name,
-            value,
-            v,
-        )
+
+        if CFG.get("verbose", False):
+            logging.debug(
+                "safe_set_position ok for %s: requested=%s device=%s",
+                node_label,
+                value,
+                v,
+            )
+        else:
+            logging.info("%s command ok: set_position %s", node_label, value)
+
         return True
+
     except Exception:
-        logging.exception("safe_set_position failed for %s", name)
+        if CFG.get("verbose", False):
+            logging.exception("safe_set_position failed for %s", node_label)
+        else:
+            logging.error("%s command failed: set_position %s", node_label, value)
 
     # Fallback for boundary values
     try:
         if value == 0:
             await device.open(wait_for_completion=False)
+            if not CFG.get("verbose", False):
+                logging.info("%s command ok: OPEN", node_label)
             return True
+
         if value == 100:
             await device.close(wait_for_completion=False)
+            if not CFG.get("verbose", False):
+                logging.info("%s command ok: CLOSE", node_label)
             return True
-    except Exception:
-        logging.exception("safe_set_position fallback failed for %s", name)
 
-    mqtt_publish(f"{CFG['root_topic']}/{name}/set/ack", f"ERROR:{value}", qos=1, retain=False)
+    except Exception:
+        if CFG.get("verbose", False):
+            logging.exception("safe_set_position fallback failed for %s", node_label)
+        else:
+            if value == 0:
+                logging.error("%s command failed: OPEN", node_label)
+            elif value == 100:
+                logging.error("%s command failed: CLOSE", node_label)
+            else:
+                logging.error("%s command failed: fallback for %s", node_label, value)
+
+    mqtt_publish(
+        f"{CFG['root_topic']}/{name}/set/ack",
+        f"ERROR:{value}",
+        qos=1,
+        retain=False,
+    )
     return False
 
 
