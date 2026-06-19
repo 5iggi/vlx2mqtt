@@ -518,41 +518,63 @@ def find_node_by_identifier(identifier: str):
 async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
     """
     Determine rain status indirectly via the opening limit.
-    Heuristik wie in Home Assistant:
-    limitation_min >= 89 => Regen erkannt
+
+    Supports both newer pyvlx APIs:
+      - await node.get_limitation_min()
+      - await node.get_limitation()
+
+    Heuristic (as used in Home Assistant):
+      limitation_min >= 89 => rain detected
     """
     try:
-        if not hasattr(node, "get_limitation_min"):
+        node_name = getattr(node, "name", "")
+        limitation = None
+        raw = None
+
+        if hasattr(node, "get_limitation_min"):
+            limitation = await node.get_limitation_min()
             logging.debug(
-                "read_rain_state: node %s has no get_limitation_min",
-                getattr(node, "name", ""),
+                "read_rain_state: get_limitation_min() for %s -> %r",
+                node_name,
+                limitation,
+            )
+            if limitation is not None:
+                raw = getattr(limitation, "position_percent", None)
+                if raw is None:
+                    raw = getattr(limitation, "min_value", None)
+
+        elif hasattr(node, "get_limitation"):
+            limitation = await node.get_limitation()
+            logging.debug(
+                "read_rain_state: get_limitation() for %s -> %r",
+                node_name,
+                limitation,
+            )
+            if limitation is not None:
+                raw = getattr(limitation, "min_value", None)
+                if raw is None:
+                    raw = getattr(limitation, "position_percent", None)
+
+        else:
+            logging.debug(
+                "read_rain_state: node %s supports neither get_limitation_min nor get_limitation",
+                node_name,
             )
             return None, None
 
-        limitation = await node.get_limitation_min()
-        logging.debug(
-            "read_rain_state: limitation for %s -> %r",
-            getattr(node, "name", ""),
-            limitation,
-        )
-
-        if limitation is None:
-            return None, None
-
-        raw = getattr(limitation, "position_percent", None)
-        if raw is None:
-            raw = getattr(limitation, "min_value", None)
-
         logging.debug(
             "read_rain_state: raw limitation for %s -> %r",
-            getattr(node, "name", ""),
+            node_name,
             raw,
         )
 
         if raw is None:
             return None, None
 
-        raw_int = int(raw)
+        raw_int = normalize_from_device(raw)
+        if raw_int is None:
+            return None, None
+
         return (raw_int >= 89), raw_int
 
     except Exception:
@@ -1138,6 +1160,8 @@ def mqtt_on_message(client, userdata, msg):
     if not topic.endswith("/set"):
         return
 
+    logging.info("MQTT set received topic=%s payload=%s", topic, payload)
+    
     rel = topic[len(root) + 1:]
     parts = rel.split("/")
 
@@ -1161,6 +1185,7 @@ def mqtt_on_message(client, userdata, msg):
     st["node_id"] = getattr(node, "node_id", None)
     st["topic_id"] = get_node_topic_id(node)
 
+    node_label = st.get("topic_id") or getattr(node, "name", "") or stkey
     value_u = payload.strip().upper()
 
     try:
@@ -1186,6 +1211,12 @@ def mqtt_on_message(client, userdata, msg):
                     "true",
                 )
 
+                if not CFG.get("verbose", False):
+                    logging.info(
+                        "%s moving: True (requested target=0)",
+                        node_label,
+                    )
+
             submit_coro_from_thread(
                 node.open(wait_for_completion=False),
                 description=f"open:{st.get('topic_id') or getattr(node, 'name', '')}",
@@ -1195,7 +1226,7 @@ def mqtt_on_message(client, userdata, msg):
             st["command_ts"] = time.time()
             st["pending_target"] = 100
             st["stop_in_progress"] = False
-            
+
             old_task = st.get("stop_finalize_task")
             if old_task:
                 try:
@@ -1212,6 +1243,12 @@ def mqtt_on_message(client, userdata, msg):
                     build_node_topic(node, "moving"),
                     "true",
                 )
+
+                if not CFG.get("verbose", False):
+                    logging.info(
+                        "%s moving: True (requested target=100)",
+                        node_label,
+                    )
 
             submit_coro_from_thread(
                 node.close(wait_for_completion=False),
@@ -1272,6 +1309,13 @@ def mqtt_on_message(client, userdata, msg):
                     build_node_topic(node, "moving"),
                     "true",
                 )
+
+                if not CFG.get("verbose", False):
+                    logging.info(
+                        "%s moving: True (requested target=%s)",
+                        node_label,
+                        pos,
+                    )
 
             submit_coro_from_thread(
                 safe_set_position(
@@ -1422,16 +1466,17 @@ async def poll_rain_sensors_once():
         if not isinstance(node, OpeningDevice):
             continue
 
+        # Only poll nodes that can actually provide limitation/rain info
+        if not (hasattr(node, "get_limitation_min") or hasattr(node, "get_limitation")):
+            continue
+
         node_name = getattr(node, "name", "")
         node_id = getattr(node, "node_id", None)
-
-        if not str(node_name).lower().startswith("fenster"):
-            logging.debug(
-                "poll_rain_sensors_once: skip node name=%s node_id=%s (not a window by name)",
-                node_name,
-                node_id,
-            )
-            continue
+        stkey = get_node_state_key(node)
+        st = NODE_STATE.setdefault(stkey, {})
+        st["node_name"] = node_name
+        st["node_id"] = node_id
+        st["topic_id"] = get_node_topic_id(node)
 
         logging.debug(
             "poll_rain_sensors_once: reading rain state for name=%s node_id=%s",
@@ -1452,12 +1497,18 @@ async def poll_rain_sensors_once():
         if rain is None:
             continue
 
+        topic_id = st.get("topic_id") or node_name or stkey
+        prev_rain = st.get("last_published_rain")
+        prev_raw = st.get("last_published_rain_raw_limit")
+        changed = (prev_rain != rain) or (raw_limit is not None and prev_raw != raw_limit)
+
         mqtt_publish_if_changed(
             build_node_topic(node, "rain"),
             "true" if rain else "false",
             qos=1,
             retain=True,
         )
+        st["last_published_rain"] = rain
 
         if _cfg_bool(CFG.get("publish_rain_raw_limit", False), False) and raw_limit is not None:
             mqtt_publish_if_changed(
@@ -1466,6 +1517,19 @@ async def poll_rain_sensors_once():
                 qos=1,
                 retain=True,
             )
+        if raw_limit is not None:
+            st["last_published_rain_raw_limit"] = raw_limit
+
+        if changed and not CFG.get("verbose", False):
+            if raw_limit is None:
+                logging.info("%s rain: %s", topic_id, "true" if rain else "false")
+            else:
+                logging.info(
+                    "%s rain: %s (raw_limit=%s)",
+                    topic_id,
+                    "true" if rain else "false",
+                    raw_limit,
+                )
 
 
 async def poll_rain_sensors():
@@ -1547,6 +1611,7 @@ async def moving_watchdog():
     while True:
         try:
             now = time.time()
+
             for stkey, st in list(NODE_STATE.items()):
                 if not st.get("moving"):
                     continue
@@ -1561,6 +1626,7 @@ async def moving_watchdog():
                     st["stop_in_progress"] = False
                     st["stop_request_pos"] = None
                     st["stop_position_changed"] = False
+                    st["command_ts"] = None
 
                     node_label = st.get("topic_id") or st.get("node_name") or stkey
 
@@ -1666,6 +1732,7 @@ async def on_node_update(node):
         target = parse_target(node, st)
         run_status = get_run_status(node)
         state_str = get_state(node)
+        remaining_time = parse_remaining_time(node)
 
         node_label = st.get("topic_id") or st.get("node_name") or stkey
 
@@ -1738,6 +1805,43 @@ async def on_node_update(node):
             or "COMMAND_COMPLETED_OK" in rs_upper
         )
 
+        cmd_ts = st.get("command_ts")
+        recent_cmd = False
+        if cmd_ts:
+            recent_cmd = (time.time() - cmd_ts) < 20.0
+
+        no_active_run = not any(k in rs_upper for k in (
+            "EXECUTION_ACTIVE",
+            "EXECUTING",
+            "RUNNING",
+            "IN_PROGRESS",
+            "ACTIVE",
+        ))
+
+        stable_or_idle = (
+            remaining_time in (None, 0)
+            or str(remaining_time).strip() in ("", "0")
+        )
+
+        stale_target = (
+            pos is not None
+            and target is not None
+            and abs(pos - target) > 1
+        )
+
+        # External / manual position adjustment
+        external_manual_final = (
+            stale_target
+            and not recent_cmd
+            and no_active_run
+            and stable_or_idle
+            and (
+                position_changed
+                or explicit_done
+                or state_u == "5"
+            )
+        )
+
         stop_request_pos = st.get("stop_request_pos")
 
         # A changed stable position after STOP means STOP completed
@@ -1767,6 +1871,33 @@ async def on_node_update(node):
             if pos is not None:
                 st["last_target"] = pos
             moving = False
+
+        elif external_manual_final:
+            st["moving"] = False
+            st["pending_target"] = None
+            st["stop_in_progress"] = False
+            st["stop_request_pos"] = None
+            st["stop_position_changed"] = False
+            st["command_ts"] = None
+
+            if pos is not None:
+                st["last_target"] = pos
+
+            moving = False
+
+            if (
+                not CFG.get("verbose", False)
+                and pos is not None
+                and target is not None
+                and abs(pos - target) > 1
+            ):
+                logging.info(
+                    "%s manual position adopted: pos=%s old_target=%s",
+                    node_label,
+                    pos,
+                    target,
+                )
+
 
         elif reached_target or explicit_done:
             st["moving"] = False
