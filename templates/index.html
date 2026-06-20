@@ -70,9 +70,44 @@
   text-decoration: none;
   color: #6dac20 !important;
 }
+
+.vlx-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-direction: row-reverse;
+}
+.vlx-hero-text {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.vlx-hero-logo {
+  flex: 0 0 auto;
+  margin-left: auto;
+  text-align: right;
+}
+.vlx-hero-logo img {
+  display: block;
+  width: 128px;
+  max-width: 100%;
+  height: auto;
+}
 @media (max-width: 900px) {
   .vlx-grid-2 {
     grid-template-columns: 1fr;
+  }
+  .vlx-hero {
+    align-items: flex-start;
+  }
+  .vlx-hero-logo {
+    width: 100%;
+    margin-left: 0;
+    text-align: right;
+  }
+  .vlx-hero-logo img {
+    width: 72px;
   }
 }
 .ui-checkbox .ui-btn {
@@ -117,11 +152,16 @@
     <div class="<TMPL_VAR NOTICE_CLASS>"><TMPL_VAR NOTICE></div>
   </TMPL_IF>
 
-  <div class="vlx-card">
-    <h1 style="margin:0 0 .3em 0;"><TMPL_VAR UI.PAGE_TITLE></h1>
-    <p class="vlx-muted" style="margin:0;">
-      <TMPL_VAR UI.PAGE_SUBTITLE>
-    </p>
+  <div class="vlx-card vlx-hero">
+    <div class="vlx-hero-text">
+      <h1 style="margin:0 0 .3em 0;"><TMPL_VAR UI.PAGE_TITLE></h1>
+      <p class="vlx-muted" style="margin:0;">
+        <TMPL_VAR UI.PAGE_SUBTITLE>
+      </p>
+    </div>
+    <div class="vlx-hero-logo">
+      <img src="<TMPL_VAR ICON_SRC>" alt="VLX2MQTT Logo">
+    </div>
   </div>
 
   <div class="vlx-card">
