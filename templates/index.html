@@ -24,9 +24,6 @@
 .ui-input-text {
   width: fit-content;
 }
-#debug_verbose, #root_topic, #external_recovery_topic, #topic_identifier-button {
-  width: 300px;
-}
 #rain_poll_interval {
   width: 80px;
 }
@@ -333,14 +330,6 @@
         <input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>" style="width:80px;">
       </div>
     </div>
-
-    <p>
-      <span class="help-inline">
-        <label for="external_recovery_topic"><strong><TMPL_VAR UI.RECOVERY_TOPIC></strong></label>
-        <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_TOPIC>">?</span>
-      </span>
-      <input id="external_recovery_topic" type="text" name="external_recovery_topic" value="<TMPL_VAR external_recovery_topic>">
-    </p>
   </div>
 
   <div class="vlx-card">
