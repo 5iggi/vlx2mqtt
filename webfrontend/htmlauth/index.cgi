@@ -256,7 +256,7 @@ my $cfg = load_cfg_hash($config_file);
 my $notice = '';
 my $notice_class = 'notice-info';
 my $notice_visible = 0;
-my $doc_link = 'https://github.com/5iggi/vlx2mqtt_old/blob/main/README_full.md';
+my $doc_link = 'https://github.com/5iggi/vlx2mqtt/blob/main/README_full.md';
 
 if ($ajax) {
     if (check_pin_if_supplied()) {
