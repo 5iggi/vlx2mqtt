@@ -1,4 +1,8 @@
-# VLX2MQTT KLF200 Bridge LoxBerry Plugin <img src="icons/icon.svg" width="120">
+<p align="center">
+  <img src="icons/icon.svg" width="160" alt="VLX2MQTT logo">
+
+# VLX2MQTT KLF200 Bridge LoxBerry Plugin 
+</p>
 
 **VLX2MQTT** ist ein LoxBerry-Plugin und eine Python-basierte MQTT-Bridge für die **VELUX KLF200 / Homecontrol IO**.
 
