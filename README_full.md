@@ -36,6 +36,7 @@ Das Plugin verbindet sich direkt mit der KLF200, liest Positionen und Zustände 
 - [Logging](#logging)
 - [Dateien und Verzeichnisse](#dateien-und-verzeichnisse)
 - [Weboberfläche](#weboberfläche)
+- [Template-System / LoxBerry-Einbindung](#template-system--loxberry-einbindung)
 - [index.cgi API](#indexcgi-api)
   - [Frontend](#frontend)
   - [AJAX-Endpunkte](#ajax-endpunkte)
@@ -83,12 +84,13 @@ Das Plugin verbindet sich direkt mit der KLF200, liest Positionen und Zustände 
 ## Wichtige Design-Entscheidungen
 
 ### Keine Interpolation in dieser Version
+
 Diese Version arbeitet **bewusst ohne Interpolation** von Bewegungen.
 
-Grund:  
+**Grund:**  
 Die vom KLF gelieferten Restlaufzeiten (`remaining_time`) sind im aktuellen Zusammenspiel mit `pyvlx` nicht in allen Situationen zuverlässig genug verfügbar, um daraus stabile Zwischenpositionen abzuleiten.
 
-Vorteile dieser Entscheidung:
+**Vorteile dieser Entscheidung:**
 
 - robusterer Betrieb
 - weniger falsche Zwischenwerte
@@ -154,7 +156,7 @@ preventive_recovery_hours = 0
 | Parameter | Bedeutung |
 |---|---|
 | `klf_host` | Hostname oder IP-Adresse der KLF200 |
-| `klf_pw` | Passwort der KLF200 |
+| `klf_pw` | WiFi-Passwort der KLF200 |
 | `mqtt_host` | MQTT-Broker |
 | `mqtt_port` | MQTT-Port |
 | `mqtt_user` | MQTT-Benutzername |
@@ -167,7 +169,7 @@ preventive_recovery_hours = 0
 | `verbose` | `1` = Debug-Logging, `0` = kompakter Log |
 | `logfile` | Pfad zur Logdatei |
 | `topic_identifier` | MQTT-Identifier pro Node: `name` oder `node_id` |
-| `rain_poll_interval` | Polling-Intervall für den Regensensor in Sekunden |
+| `rain_poll_interval` | Polling-Intervall für die Regenabfrage in Sekunden |
 | `publish_rain_raw_limit` | veröffentlicht zusätzlich den Rohwert `rain_raw_limit` |
 | `external_recovery_enabled` | aktiviert externen Recovery-/Power-Cycle-Trigger |
 | `external_recovery_threshold` | Anzahl relevanter Fehler bis Recovery angefordert wird |
@@ -223,90 +225,34 @@ preventive_recovery_hours = 0
 
 ### `<root_topic>/status`
 <a id="root_topicstatus"></a>
+
 Ein **einfacher Gesamtstatus** für Logik und Visualisierung.
 
-Werte:
+**Werte:**
 
 - `ok`
 - `error`
-
-Typische Verwendung:
-
-- Ampelstatus in Loxone
-- einfache Sammelfehler-Erkennung
 
 ---
 
 ### `<root_topic>/status_detail`
 <a id="root_topicstatus_detail"></a>
+
 Ein **stabiler Detailstatus** für Automatisierung, Diagnose und History.
 
 `status_detail` ist **dienstorientiert**:
 
-- wenn der Dienst **nicht** läuft, z. B.:
-  - `service_starting`
-  - `service_stopped`
-  - `service_lost`
-- wenn der Dienst läuft, entspricht er dem aktuellen KLF-Status, z. B.:
-  - `klf_connected`
-  - `klf_connecting`
-  - `klf_connection_refused`
-  - `klf_auth_failed`
-  - `klf_unreachable`
-
-Typische Verwendung:
-
-- klare Auswertung in Loxone / Node-RED
-- Historie „war der Dienst aus oder war die KLF nicht erreichbar?“
-- Fehlerursachen unterscheiden
+- wenn der Dienst **nicht** läuft, z. B. `service_starting`, `service_stopped`, `service_lost`
+- wenn der Dienst läuft, entspricht er typischerweise dem aktuellen KLF-Status, z. B. `klf_connected`, `klf_connecting`, `klf_connection_refused`, `klf_auth_failed`, `klf_unreachable`
 
 ---
 
 ### `<root_topic>/status_live`
 <a id="root_topicstatus_live"></a>
+
 Ein **roher Live-Status** der KLF-Verbindung.
 
-`status_live` bildet immer direkt den aktuellen KLF-Zustand ab, z. B.:
-
-- `starting`
-- `klf_connecting`
-- `klf_connected`
-- `klf_connection_refused`
-- `stopped`
-
-Im Gegensatz zu `status_detail` ist `status_live` **nicht service-abstrahiert**, sondern zeigt den **unmittelbaren aktuellen KLF-Livezustand**.
-
-Typische Verwendung:
-
-- Live-Diagnose
-- technisches Monitoring
-- Anzeige aktueller Übergangszustände
-
----
-
-### Kurz gesagt
-
-- **`status`** = grob: `ok` / `error`
-- **`status_detail`** = stabiler, dienstbewusster Detailstatus
-- **`status_live`** = aktueller roher Live-Status der KLF-Verbindung
-
-Beispiel:
-
-```text
-service_status = running
-status = error
-status_detail = klf_connection_refused
-status_live = klf_connection_refused
-```
-
-oder beim Start:
-
-```text
-service_status = starting
-status = error
-status_detail = service_starting
-status_live = starting
-```
+`status_live` bildet immer direkt den aktuellen KLF-Zustand ab.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -315,22 +261,19 @@ status_live = starting
 ## Bedeutung der Node-Topics
 
 ### `<root_topic>/<Identifier>/position`
-Rückmeldung der aktuellen Geräteposition.  
-Der Wert wird aus den von KLF / `pyvlx` gelieferten Zustandsdaten übernommen.
+Rückmeldung der aktuellen Geräteposition.
 
 ### `<root_topic>/<Identifier>/set`
-Befehlseingang für die Steuerung des Geräts.  
-Unterstützt `UP`, `DOWN`, `STOP`, `OPEN`, `CLOSE` sowie numerische Zielpositionen `0..100`.
+Befehlseingang für die Steuerung des Geräts. Unterstützt `UP`, `DOWN`, `STOP`, `OPEN`, `CLOSE` sowie numerische Zielpositionen `0..100`.
 
 ### `<root_topic>/<Identifier>/moving`
-Vom Skript abgeleiteter Bewegungsstatus.  
-Der Wert wird aus KLF-Rückmeldungen, Run-Status, Ziel-/Positionswerten und interner Bewegungslogik berechnet.
+Vom Skript abgeleiteter Bewegungsstatus.
 
 ### `<root_topic>/<Identifier>/rain`
 Binärer Regenstatus für unterstützte Fenster (`true` / `false`).
 
 ### `<root_topic>/<Identifier>/rain_raw_limit`
-Optionaler Rohwert der indirekten Regen-Erkennung über `MIN_LIMITATION`.
+Optionaler Rohwert der indirekten Regen-Erkennung über die Öffnungsbegrenzung.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -354,15 +297,6 @@ vlx2mqtt/2/set -> STOP
 vlx2mqtt/2/set -> 65
 ```
 
-Unterstützte Werte:
-
-- `UP`
-- `OPEN`
-- `DOWN`
-- `CLOSE`
-- `STOP`
-- numerische Positionen `0..100`
-
 [Zurück zum Inhalt](#inhalt)
 
 ---
@@ -374,18 +308,7 @@ Unterstützte Werte:
 - `name` → Geräte-/Knotennamen, z. B. `Rollladen_links`
 - `node_id` → numerische KLF-Node-ID, z. B. `2`
 
-### Beispiel-Zuordnung
-
-```text
-Fenster_links    -> 0
-Fenster_rechts   -> 1
-Rollladen_links  -> 2
-Rollladen_rechts -> 3
-```
-
-### Wichtiger Hinweis beim Umschalten
-
-Wenn von `name` auf `node_id` (oder umgekehrt) umgestellt wird, können **alte retained Topics** im MQTT-Broker sichtbar bleiben. Diese alten retained Einträge sollten einmal gelöscht werden, damit Loxone oder MQTT Explorer keine veralteten Werte mehr anzeigen.
+Wenn von `name` auf `node_id` (oder umgekehrt) umgestellt wird, können **alte retained Topics** im MQTT-Broker sichtbar bleiben.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -400,18 +323,26 @@ Für unterstützte Fenster wird ein indirekter Regenstatus veröffentlicht:
 <root_topic>/<Identifier>/rain_raw_limit
 ```
 
-Der Regenstatus wird indirekt über die Öffnungsbegrenzung (`MIN_LIMITATION`) abgeleitet und periodisch abgefragt.
+Der Regenstatus wird **indirekt über die Öffnungsbegrenzung** des Fensters ermittelt und periodisch abgefragt.
 
-Beispiele im `node_id`-Modus:
+### Technischer Hinweis
 
-```text
-vlx2mqtt/0/rain
-vlx2mqtt/0/rain_raw_limit
-vlx2mqtt/1/rain
-vlx2mqtt/1/rain_raw_limit
-```
+Je nach verwendeter `pyvlx`-Version bzw. Node-Repräsentation stehen die dafür benötigten Informationen über unterschiedliche APIs zur Verfügung. VLX2MQTT unterstützt dafür beide Varianten:
 
-> Je nach `pyvlx`-/Node-Repräsentation stehen die dafür benötigten Informationen nicht immer zur Verfügung.
+- `get_limitation_min()`
+- `get_limitation()`
+
+### Heuristik
+
+- `raw_limit < 89` → kein Regen erkannt
+- `raw_limit >= 89` → Regen erkannt
+
+### Wichtige Hinweise
+
+- Regenstatus wird **nur für Nodes veröffentlicht**, die die nötigen Limitation-Daten bereitstellen.
+- Die Veröffentlichung hängt **nicht** vom Gerätenamen ab.
+- `rain_raw_limit` ist optional und wird nur publiziert, wenn `publish_rain_raw_limit = true` gesetzt ist.
+- `rain` ist ein **Status-Topic**, kein Steuertopic.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -419,22 +350,7 @@ vlx2mqtt/1/rain_raw_limit
 
 ## Recovery / Power-Cycle
 
-Bei wiederholten Fehlerzuständen wie z. B.
-
-```text
-klf_connection_refused
-```
-
-kann das Plugin optional einen externen Recovery-/Power-Cycle-Trigger per MQTT veröffentlichen.
-
-Beispiel:
-
-```text
-vlx2mqtt/recovery/powercycle_required = true
-vlx2mqtt/recovery/reason = klf_connection_refused
-```
-
-Damit kann z. B. in **Loxone** eine schaltbare Steckdose genutzt werden, um die KLF200 stromlos zu machen und neu zu starten.
+Bei wiederholten Fehlerzuständen wie z. B. `klf_connection_refused` kann das Plugin optional einen externen Recovery-/Power-Cycle-Trigger per MQTT veröffentlichen.
 
 ### Empfehlung
 
@@ -442,27 +358,9 @@ Damit kann z. B. in **Loxone** eine schaltbare Steckdose genutzt werden, um die 
 - externe Recovery nur bei echten Verbindungsproblemen nutzen
 - präventive Recovery bewusst und konservativ konfigurieren
 
----
+### Warum gibt es einen präventiven Recovery-Trigger?
 
-## Warum gibt es einen präventiven Recovery-Trigger?
-
-Die KLF200 ist in der Praxis nicht immer dauerhaft stabil, wenn viele oder wiederholte Verbindungsaufbauten stattfinden.
-
-Aus diesem Grund unterstützt VLX2MQTT optional einen **präventiven Recovery-Trigger**.
-
-Dieser Mechanismus soll die KLF200 **vorsorglich stabilisieren**, bevor sie in einen Zustand gelangt, in dem keine Verbindung mehr aufgebaut werden kann oder nur noch ein Neustart hilft.
-
-Wichtig:
-
-- VLX2MQTT rebootet die KLF200 **nicht direkt selbst**
-- das Plugin veröffentlicht stattdessen einen **externen MQTT-Trigger**
-- dieser Trigger kann z. B. von **Loxone**, **Node-RED** oder einer **schaltbaren Steckdose** ausgewertet werden
-
-### Empfohlene Verwendung
-
-- Für den normalen Betrieb vorzugsweise **reaktive Recovery** bei echten Fehlern verwenden
-- Präventive Recovery nur bewusst aktivieren
-- Präventive Trigger eher konservativ wählen (z. B. 24 h oder mehr)
+Die KLF200 ist in der Praxis nicht immer dauerhaft stabil, wenn viele oder wiederholte Verbindungsaufbauten stattfinden. Aus diesem Grund unterstützt VLX2MQTT optional einen **präventiven Recovery-Trigger**.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -481,6 +379,13 @@ Logdatei:
 - `verbose = 1` → ausführliches Debug-Logging
 - `verbose = 0` → reduziertes Logging für den produktiven Betrieb
 
+### Beispiele für kompaktes Logging (`verbose = 0`)
+
+```text
+Fenster_links rain: false (raw_limit=0)
+Fenster_rechts rain: true (raw_limit=100)
+```
+
 [Zurück zum Inhalt](#inhalt)
 
 ---
@@ -495,6 +400,10 @@ Logdatei:
 /opt/loxberry/data/plugins/vlx2mqtt/venv
 /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 /etc/systemd/system/vlx2mqtt.service
+/opt/loxberry/webfrontend/htmlauth/plugins/vlx2mqtt/index.cgi
+/opt/loxberry/templates/plugins/vlx2mqtt/index.html
+/opt/loxberry/templates/plugins/vlx2mqtt/lang/language_de.ini
+/opt/loxberry/templates/plugins/vlx2mqtt/lang/language_en.ini
 ```
 
 [Zurück zum Inhalt](#inhalt)
@@ -514,13 +423,23 @@ Das Plugin enthält eine LoxBerry-Weboberfläche zur Konfiguration von:
 - optionalem `rain_raw_limit`
 - Recovery-/Power-Cycle-Einstellungen
 
-Zusätzlich sind Servicefunktionen wie
+Zusätzlich sind Servicefunktionen wie **Restart**, **Stop** und **Log anzeigen** integriert.
 
-- **Restart**
-- **Stop**
-- **Log anzeigen**
+[Zurück zum Inhalt](#inhalt)
 
-integriert.
+---
+
+## Template-System / LoxBerry-Einbindung
+
+Die Weboberfläche nutzt das LoxBerry-Template-System mit `HTML::Template`.
+
+Wichtige Hinweise:
+
+- `index.cgi` wird im authentifizierten Plugin-Webfrontend abgelegt.
+- Das eigentliche HTML-Template liegt im Template-Verzeichnis des Plugins.
+- Die Seite wird über `LoxBerry::Web::lbheader()` und `LoxBerry::Web::lbfooter()` in das LoxBerry-Layout eingebunden.
+- Eigene Templates sollten **kein eigenes `<html>`, `<head>` oder `<body>`** erzeugen.
+- Sprachdateien liegen typischerweise unter `templates/.../lang/` und werden über `readlanguage()` eingebunden.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -546,27 +465,7 @@ Normale Weboberfläche:
 index.cgi?ajax=statusvlx
 ```
 
-Liefert den aktuellen Dienststatus als JSON, typischerweise mit:
-
-- `error`
-- `pid`
-- `state`
-- `message`
-- `klf_status`
-
-Beispiel:
-
-```json
-{
-  "error": 0,
-  "pid": "12345",
-  "state": "active",
-  "message": "OK",
-  "klf_status": "klf_connected"
-}
-```
-
----
+Liefert den aktuellen Dienststatus als JSON zurück, typischerweise mit Feldern wie `error`, `pid`, `state`, `message` und `klf_status`.
 
 #### Dienst neu starten
 
@@ -574,9 +473,7 @@ Beispiel:
 index.cgi?ajax=restartvlx
 ```
 
-Startet den Dienst `vlx2mqtt.service` neu und liefert den Status der Aktion als JSON zurück.
-
----
+Startet den Dienst `vlx2mqtt.service` neu.
 
 #### Dienst stoppen
 
@@ -584,9 +481,7 @@ Startet den Dienst `vlx2mqtt.service` neu und liefert den Status der Aktion als 
 index.cgi?ajax=stopvlx
 ```
 
-Stoppt den Dienst `vlx2mqtt.service` und liefert den Status der Aktion als JSON zurück.
-
----
+Stoppt den Dienst `vlx2mqtt.service`.
 
 #### MQTT-Topic einmalig lesen
 
@@ -594,20 +489,7 @@ Stoppt den Dienst `vlx2mqtt.service` und liefert den Status der Aktion als JSON 
 index.cgi?ajax=gettopic&topic=<root_topic>/status
 ```
 
-Liest einmalig ein MQTT-Topic aus und liefert dessen Payload als JSON zurück.
-
-Beispiel:
-
-```json
-{
-  "error": 0,
-  "topic": "vlx2mqtt/status",
-  "payload": "ok",
-  "message": "ok"
-}
-```
-
----
+Liest einmalig ein MQTT-Topic aus und liefert die Payload als JSON zurück.
 
 ### Optional: Secure PIN
 
@@ -616,8 +498,6 @@ Optional kann zusätzlich ein Secure-PIN-Parameter mitgegeben werden:
 ```text
 index.cgi?ajax=statusvlx&secpin=1234
 ```
-
----
 
 ### Unterstützte `ajax`-Werte
 
@@ -628,8 +508,6 @@ stopvlx
 gettopic
 ```
 
-Unbekannte Aktionen werden mit einer JSON-Fehlermeldung quittiert.
-
 [Zurück zum Inhalt](#inhalt)
 
 ---
@@ -639,7 +517,8 @@ Unbekannte Aktionen werden mit einer JSON-Fehlermeldung quittiert.
 - Beim Start kann kurz ein alter `moving=true`-Zustand aus retained MQTT-Daten sichtbar sein, bevor der Initialstatus ihn korrigiert.
 - Beim Umschalten zwischen `topic_identifier = name` und `topic_identifier = node_id` können alte retained Topics im Broker verbleiben.
 - KLF-interne Zeitstempel in empfangenen Frames können von der realen Systemzeit abweichen.
-- Rain-Polling ist abhängig von der pyvlx-/Node-Unterstützung.
+- Rain-Polling ist abhängig von der `pyvlx`-/Node-Unterstützung.
+- `rain` und `rain_raw_limit` werden nur für unterstützte Fensternodes veröffentlicht.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -649,15 +528,14 @@ Unbekannte Aktionen werden mit einer JSON-Fehlermeldung quittiert.
 
 1. Plugin starten
 2. Prüfen, ob `status = ok` und `status_detail = klf_connected` gesetzt werden
-3. Im gewünschten Identifier-Modus testen:
-   - `name`: z. B. `vlx2mqtt/Rollladen_links/set`
-   - `node_id`: z. B. `vlx2mqtt/2/set`
+3. Im gewünschten Identifier-Modus testen
 4. MQTT-Befehl `DOWN` oder `100` senden
 5. MQTT-Befehl `STOP` senden
-6. numerische Position, z. B. `65`, anfahren
+6. numerische Position anfahren
 7. Prüfen, ob Fenster-Regenstatus (`.../rain`) publiziert wird
-8. Dienst sauber stoppen und prüfen, dass **kein KLF-Reboot** ausgelöst wird
-9. optional Recovery-Topic mit externer Steckdose / Loxone testen
+8. Optional `publish_rain_raw_limit = true` aktivieren und `.../rain_raw_limit` beobachten
+9. Dienst sauber stoppen und prüfen, dass **kein KLF-Reboot** ausgelöst wird
+10. Optional Recovery-Topic mit externer Steckdose / Loxone testen
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -667,17 +545,13 @@ Unbekannte Aktionen werden mit einer JSON-Fehlermeldung quittiert.
 
 Beim Entfernen des Plugins räumt das Uninstall-Skript insbesondere den extern angelegten `systemd`-Dienst wieder auf.
 
-Die pluginbezogenen Standardverzeichnisse entfernt LoxBerry automatisch.
-
 [Zurück zum Inhalt](#inhalt)
 
 ---
 
 ## Status des Projekts
 
-Das Plugin ist bewusst auf **robusten, nachvollziehbaren Betrieb** ausgelegt.
-
-Schwerpunkt ist eine stabile MQTT-Anbindung der KLF200 unter LoxBerry mit klarer Status- und Recovery-Logik.
+Das Plugin ist bewusst auf **robusten, nachvollziehbaren Betrieb** ausgelegt. Schwerpunkt ist eine stabile MQTT-Anbindung der KLF200 unter LoxBerry mit klarer Status- und Recovery-Logik.
 
 [Zurück zum Inhalt](#inhalt)
 
