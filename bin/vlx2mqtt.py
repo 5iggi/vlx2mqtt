@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 import paho.mqtt.client as mqtt
 from pyvlx import OpeningDevice, PyVLX
+from pyvlx.exception import PyVLXException
 
 # ============================================================
 # pyvlx payload patch
@@ -525,9 +526,14 @@ async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
 
     Heuristic (as used in Home Assistant):
       limitation_min >= 89 => rain detected
+
+    Option 2 hardening:
+      - short retry on transient "Unable to send command"
+      - skip aggressive ERROR spam for single transient read failures
     """
-    try:
-        node_name = getattr(node, "name", "")
+    node_name = getattr(node, "name", "")
+
+    async def _read_once() -> tuple[Optional[bool], Optional[int]]:
         limitation = None
         raw = None
 
@@ -554,7 +560,6 @@ async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
                 raw = getattr(limitation, "min_value", None)
                 if raw is None:
                     raw = getattr(limitation, "position_percent", None)
-
         else:
             logging.debug(
                 "read_rain_state: node %s supports neither get_limitation_min nor get_limitation",
@@ -577,10 +582,42 @@ async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
 
         return (raw_int >= 89), raw_int
 
-    except Exception:
-        logging.exception("read_rain_state failed for %s", getattr(node, "name", ""))
-        return None, None
+    # Short retry for transient KLF / pyvlx send problems
+    retry_delays = (0.0, 0.6)
+    last_exc: Optional[Exception] = None
 
+    for attempt, delay in enumerate(retry_delays, start=1):
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+            return await _read_once()
+        except PyVLXException as exc:
+            last_exc = exc
+            if "Unable to send command" in str(exc):
+                if attempt < len(retry_delays):
+                    logging.warning(
+                        "read_rain_state transient send failure for %s (attempt %s/%s) - retrying",
+                        node_name,
+                        attempt,
+                        len(retry_delays),
+                    )
+                    continue
+                logging.warning(
+                    "read_rain_state failed for %s after retry: %s",
+                    node_name,
+                    exc,
+                )
+                return None, None
+            logging.exception("read_rain_state failed for %s", node_name)
+            return None, None
+        except Exception as exc:
+            last_exc = exc
+            logging.exception("read_rain_state failed for %s", node_name)
+            return None, None
+
+    if last_exc is not None:
+        logging.warning("read_rain_state failed for %s: %s", node_name, last_exc)
+    return None, None
 
 
 # ============================================================
@@ -1462,6 +1499,8 @@ async def poll_rain_sensors_once():
     """Poll rain status once."""
     logging.debug("poll_rain_sensors_once: start")
 
+    now = time.time()
+
     for node in getattr(pyvlx, "nodes", []):
         if not isinstance(node, OpeningDevice):
             continue
@@ -1477,6 +1516,23 @@ async def poll_rain_sensors_once():
         st["node_name"] = node_name
         st["node_id"] = node_id
         st["topic_id"] = get_node_topic_id(node)
+
+        # Option 2: do not poll rain while the node is moving or very shortly after a command.
+        if st.get("moving", False):
+            logging.debug(
+                "poll_rain_sensors_once: skip rain poll for %s (moving=true)",
+                node_name,
+            )
+            continue
+
+        cmd_ts = st.get("command_ts")
+        if cmd_ts and (now - cmd_ts) < 30.0:
+            logging.debug(
+                "poll_rain_sensors_once: skip rain poll for %s (recent command %.1fs ago)",
+                node_name,
+                now - cmd_ts,
+            )
+            continue
 
         logging.debug(
             "poll_rain_sensors_once: reading rain state for name=%s node_id=%s",
@@ -1530,7 +1586,6 @@ async def poll_rain_sensors_once():
                     "true" if rain else "false",
                     raw_limit,
                 )
-
 
 async def poll_rain_sensors():
     """
