@@ -5,7 +5,6 @@
   gap: 6px;
   margin-bottom: 4px;
 }
-
 .help-tip {
   display: inline-flex;
   align-items: center;
@@ -24,19 +23,71 @@
 }
 .ui-input-text {
   width: fit-content;
-
-#debug_verbose, #root_topic, #external_recovery_topic, #topic_identifier {
+}
+#debug_verbose, #root_topic, #external_recovery_topic, #topic_identifier-button {
   width: 300px;
 }
 #rain_poll_interval {
   width: 80px;
 }
+.vlx-card {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 0 0 1em 0;
+  background: #fff;
+}
+.vlx-card h1,
+.vlx-card h2,
+.vlx-card h3 {
+  margin-top: 0;
+}
+.vlx-muted {
+  color: #666;
+  font-size: 0.95em;
+}
+.notice-success,
+.notice-error,
+.notice-info {
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 0 0 1em 0;
+}
+.notice-success { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
+.notice-error   { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
+.notice-info    { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+.vlx-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-width: 980px;
+}
+.vlx-linkbox {
+  display: inline-block;
+  padding: 10px 14px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #f7f7f7;
+  text-decoration: none;
+}
+@media (max-width: 900px) {
+  .vlx-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+.ui-checkbox .ui-btn {
+  display: inline-block !important;
+  width: 300px !important;
+  box-sizing: border-box !important;
+}
+#topic_identifier-button {
+  width: 240px !important;
+}
 </style>
 
 <form method="post" action="index.cgi">
   <div style="display:flex; align-items:center; justify-content:center; width:100%; margin-bottom:1em; gap:10px; flex-wrap:wrap;">
-    <span id="servicestate">Status wird geladen…</span>
-
+    <span id="servicestate"><TMPL_VAR UI.STATUS_LOADING></span>
     <a style="width:60px;"
        href="javascript:restartService();"
        id="btnrestart"
@@ -44,8 +95,7 @@
        data-inline="true"
        data-icon="refresh"
        data-mini="true"
-       data-transition="flow">Restart</a>
-
+       data-transition="flow"><TMPL_VAR UI.RESTART></a>
     <a style="width:60px;"
        href="javascript:stopService();"
        id="btnstop"
@@ -53,234 +103,235 @@
        data-inline="true"
        data-icon="delete"
        data-mini="true"
-       data-transition="flow">Stop</a>
-
+       data-transition="flow"><TMPL_VAR UI.STOP></a>
     <a style="width:110px;"
        id="btnshwlog"
        data-icon="info"
        data-role="button"
        data-mini="true"
        target="log"
-       href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template">Log anzeigen</a>
+       href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template"><TMPL_VAR UI.SHOW_LOG></a>
   </div>
 
-  <div style="margin-bottom:1em; color:#006400;"><TMPL_VAR NOTICE></div>
+  <TMPL_IF NOTICE_VISIBLE>
+    <div class="<TMPL_VAR NOTICE_CLASS>"><TMPL_VAR NOTICE></div>
+  </TMPL_IF>
 
-<hr>
-<h1>VLX2MQTT KLF200 Bridge</h1>
-
-<!-- Grundkonfiguration: 2 Spalten -->
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
-
-  <div>
-    <span class="help-inline">
-      <label for="klf_host"><strong>KLF Host:</strong></label>
-      <span class="help-tip" title="Hostname oder IP-Adresse der VELUX KLF200 / Homecontrol IO.">?</span>
-    </span>
-    <input id="klf_host" type="text" name="klf_host" value="<TMPL_VAR klf_host>">
+  <div class="vlx-card">
+    <h1 style="margin:0 0 .3em 0;"><TMPL_VAR UI.PAGE_TITLE></h1>
+    <p class="vlx-muted" style="margin:0;">
+      <TMPL_VAR UI.PAGE_SUBTITLE>
+    </p>
   </div>
 
-  <div>
-    <span class="help-inline">
-      <label for="klf_pw"><strong>KLF Passwort:</strong></label>
-      <span class="help-tip" title="WiFi Passwort der VELUX KLF200.">?</span>
-    </span>
-    <input id="klf_pw" type="text" name="klf_pw" value="<TMPL_VAR klf_pw>">
+  <div class="vlx-card">
+    <h2><TMPL_VAR UI.SECTION_BASIC></h2>
+    <div class="vlx-grid-2">
+      <div>
+        <span class="help-inline">
+          <label for="klf_host"><strong><TMPL_VAR UI.KLF_HOST></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.KLF_HOST>">?</span>
+        </span>
+        <input id="klf_host" type="text" name="klf_host" value="<TMPL_VAR klf_host>">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="klf_pw"><strong><TMPL_VAR UI.KLF_PW></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.KLF_PW>">?</span>
+        </span>
+        <input id="klf_pw" type="text" name="klf_pw" value="<TMPL_VAR klf_pw>">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="mqtt_host"><strong><TMPL_VAR UI.MQTT_HOST></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_HOST>">?</span>
+        </span>
+        <input id="mqtt_host" type="text" name="mqtt_host" value="<TMPL_VAR mqtt_host>">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="mqtt_port"><strong><TMPL_VAR UI.MQTT_PORT></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_PORT>">?</span>
+        </span>
+        <input id="mqtt_port" type="text" name="mqtt_port" value="<TMPL_VAR mqtt_port>">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="mqtt_user"><strong><TMPL_VAR UI.MQTT_USER></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_USER>">?</span>
+        </span>
+        <input id="mqtt_user" type="text" name="mqtt_user" value="<TMPL_VAR mqtt_user>">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="mqtt_pw"><strong><TMPL_VAR UI.MQTT_PW></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_PW>">?</span>
+        </span>
+        <input id="mqtt_pw" type="text" name="mqtt_pw" value="<TMPL_VAR mqtt_pw>">
+      </div>
+    </div>
   </div>
 
-  <div>
-    <span class="help-inline">
-      <label for="mqtt_host"><strong>MQTT Host:</strong></label>
-      <span class="help-tip" title="Hostname oder IP-Adresse des MQTT-Brokers.">?</span>
-    </span>
-    <input id="mqtt_host" type="text" name="mqtt_host" value="<TMPL_VAR mqtt_host>">
+  <div class="vlx-card">
+    <h2><TMPL_VAR UI.SECTION_ADVANCED></h2>
+    <p>
+      <span class="help-inline">
+        <label for="root_topic"><strong><TMPL_VAR UI.ROOT_TOPIC></strong></label>
+        <span class="help-tip" title="<TMPL_VAR HELP.ROOT_TOPIC>">?</span>
+      </span>
+      <input id="root_topic" type="text" name="root_topic" value="<TMPL_VAR root_topic>">
+    </p>
+
+    <div class="vlx-grid-2">
+      <div>
+        <span class="help-inline">
+          <label for="initial_delay"><strong><TMPL_VAR UI.INITIAL_DELAY></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.INITIAL_DELAY>">?</span>
+        </span>
+        <input id="initial_delay" type="text" name="initial_delay" value="<TMPL_VAR initial_delay>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="connect_timeout"><strong><TMPL_VAR UI.CONNECT_TIMEOUT></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.CONNECT_TIMEOUT>">?</span>
+        </span>
+        <input id="connect_timeout" type="text" name="connect_timeout" value="<TMPL_VAR connect_timeout>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="moving_timeout"><strong><TMPL_VAR UI.MOVING_TIMEOUT></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.MOVING_TIMEOUT>">?</span>
+        </span>
+        <input id="moving_timeout" type="text" name="moving_timeout" value="<TMPL_VAR moving_timeout>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="backoff_max"><strong><TMPL_VAR UI.BACKOFF_MAX></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.BACKOFF_MAX>">?</span>
+        </span>
+        <input id="backoff_max" type="text" name="backoff_max" value="<TMPL_VAR backoff_max>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="topic_identifier"><strong><TMPL_VAR UI.TOPIC_IDENTIFIER></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.TOPIC_IDENTIFIER>">?</span>
+        </span>
+        <select id="topic_identifier" name="topic_identifier">
+          <option value="name" <TMPL_VAR topic_identifier_name_selected>>name</option>
+          <option value="node_id" <TMPL_VAR topic_identifier_node_id_selected>>node_id</option>
+        </select>
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="rain_poll_interval"><strong><TMPL_VAR UI.RAIN_POLL_INTERVAL></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.RAIN_POLL_INTERVAL>">?</span>
+        </span>
+        <input id="rain_poll_interval" type="text" name="rain_poll_interval" value="<TMPL_VAR rain_poll_interval>" style="width:80px;">
+      </div>
+    </div>
+
+    <p>
+      <span class="help-inline">
+        <label for="debug_verbose">
+          <input id="debug_verbose" type="checkbox" name="debug_verbose" value="1" <TMPL_VAR debug_verbose_checked>>
+          <TMPL_VAR UI.VERBOSE_LOGGING>
+        </label>
+        <span class="help-tip" title="<TMPL_VAR HELP.VERBOSE_LOGGING>">?</span>
+      </span>
+    </p>
+    <p>
+      <span class="help-inline">
+        <label for="publish_rain_raw_limit">
+          <input id="publish_rain_raw_limit" type="checkbox" name="publish_rain_raw_limit" value="1" <TMPL_VAR publish_rain_raw_limit_checked>>
+          <TMPL_VAR UI.PUBLISH_RAIN_RAW_LIMIT>
+        </label>
+        <span class="help-tip" title="<TMPL_VAR HELP.PUBLISH_RAIN_RAW_LIMIT>">?</span>
+      </span>
+    </p>
+    <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
   </div>
 
-  <div>
-    <span class="help-inline">
-      <label for="mqtt_port"><strong>MQTT Port:</strong></label>
-      <span class="help-tip" title="Port des MQTT-Brokers, normalerweise 1883.">?</span>
-    </span>
-    <input id="mqtt_port" type="text" name="mqtt_port" value="<TMPL_VAR mqtt_port>">
+  <div class="vlx-card">
+    <h2><TMPL_VAR UI.SECTION_RECOVERY></h2>
+    <p>
+      <span class="help-inline">
+        <label for="external_recovery_enabled">
+          <input id="external_recovery_enabled" type="checkbox" name="external_recovery_enabled" value="1" <TMPL_VAR external_recovery_enabled_checked>>
+          <TMPL_VAR UI.ENABLE_EXTERNAL_RECOVERY>
+        </label>
+        <span class="help-tip" title="<TMPL_VAR HELP.ENABLE_EXTERNAL_RECOVERY>">?</span>
+      </span>
+    </p>
+
+    <div class="vlx-grid-2">
+      <div>
+        <span class="help-inline">
+          <label for="external_recovery_threshold"><strong><TMPL_VAR UI.RECOVERY_THRESHOLD></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_THRESHOLD>">?</span>
+        </span>
+        <input id="external_recovery_threshold" type="text" name="external_recovery_threshold" value="<TMPL_VAR external_recovery_threshold>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="external_recovery_cooldown"><strong><TMPL_VAR UI.RECOVERY_COOLDOWN></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_COOLDOWN>">?</span>
+        </span>
+        <input id="external_recovery_cooldown" type="text" name="external_recovery_cooldown" value="<TMPL_VAR external_recovery_cooldown>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="external_recovery_grace"><strong><TMPL_VAR UI.RECOVERY_GRACE></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_GRACE>">?</span>
+        </span>
+        <input id="external_recovery_grace" type="text" name="external_recovery_grace" value="<TMPL_VAR external_recovery_grace>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="preventive_recovery_hours"><strong><TMPL_VAR UI.PREVENTIVE_RECOVERY></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.PREVENTIVE_RECOVERY>">?</span>
+        </span>
+        <input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>" style="width:80px;">
+      </div>
+    </div>
+
+    <p>
+      <span class="help-inline">
+        <label for="external_recovery_topic"><strong><TMPL_VAR UI.RECOVERY_TOPIC></strong></label>
+        <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_TOPIC>">?</span>
+      </span>
+      <input id="external_recovery_topic" type="text" name="external_recovery_topic" value="<TMPL_VAR external_recovery_topic>">
+    </p>
   </div>
 
-  <div>
-    <span class="help-inline">
-      <label for="mqtt_user"><strong>MQTT User:</strong></label>
-      <span class="help-tip" title="Benutzername für die Anmeldung am MQTT-Broker.">?</span>
-    </span>
-    <input id="mqtt_user" type="text" name="mqtt_user" value="<TMPL_VAR mqtt_user>">
+  <div class="vlx-card">
+    <h2><TMPL_VAR UI.SECTION_DOCUMENTATION></h2>
+    <p class="vlx-muted"><TMPL_VAR UI.DOCUMENTATION_TEXT></p>
+    <a class="vlx-linkbox" href="<TMPL_VAR DOC_LINK>" target="_blank" rel="noopener noreferrer"><TMPL_VAR UI.OPEN_DOCUMENTATION></a>
   </div>
-
-  <div>
-    <span class="help-inline">
-      <label for="mqtt_pw"><strong>MQTT Passwort:</strong></label>
-      <span class="help-tip" title="Passwort für die Anmeldung am MQTT-Broker.">?</span>
-    </span>
-    <input id="mqtt_pw" type="text" name="mqtt_pw" value="<TMPL_VAR mqtt_pw>">
-  </div>
-
-</div>
-
-<br>
-
-<!-- Erweiterte Einstellungen -->
-<fieldset style="border:1px solid #ddd; padding:10px; margin:0 0 1em 0;">
-  <legend style="font-weight:bold;">Erweiterte Einstellungen</legend>
-
-  <!-- Root Topic bleibt volle Breite -->
-  <p>
-    <span class="help-inline">
-      <label for="root_topic"><strong>Root Topic:</strong></label>
-      <span class="help-tip" title="Oberstes MQTT-Topic des Plugins, z. B. vlx2mqtt.">?</span>
-    </span>
-    <input id="root_topic" type="text" name="root_topic" value="<TMPL_VAR root_topic>">
-  </p>
-
-  <!-- 2 Spalten für die restlichen Felder -->
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
-
-    <div>
-      <span class="help-inline">
-        <label for="initial_delay"><strong>Initial Delay (s):</strong></label>
-        <span class="help-tip" title="Wartezeit nach dem Start des Dienstes, bevor der erste Snapshot / Initialstatus veröffentlicht wird.">?</span>
-      </span>
-      <input id="initial_delay" type="text" name="initial_delay" value="<TMPL_VAR initial_delay>" style="width:80px;">
-    </div>
-
-    <div>
-      <span class="help-inline">
-        <label for="connect_timeout"><strong>Connect Timeout (s):</strong></label>
-        <span class="help-tip" title="Maximale Wartezeit für den Verbindungsaufbau zur KLF200.">?</span>
-      </span>
-      <input id="connect_timeout" type="text" name="connect_timeout" value="<TMPL_VAR connect_timeout>" style="width:80px;">
-    </div>
-
-    <div>
-      <span class="help-inline">
-        <label for="moving_timeout"><strong>Moving Timeout (s):</strong></label>
-        <span class="help-tip" title="Watchdog-Zeit für eine laufende Bewegung.">?</span>
-      </span>
-      <input id="moving_timeout" type="text" name="moving_timeout" value="<TMPL_VAR moving_timeout>" style="width:80px;">
-    </div>
-
-    <div>
-      <span class="help-inline">
-        <label for="backoff_max"><strong>Backoff Max (s):</strong></label>
-        <span class="help-tip" title="Maximale Wartezeit zwischen zwei Wiederverbindungsversuchen zur KLF200.">?</span>
-      </span>
-      <input id="backoff_max" type="text" name="backoff_max" value="<TMPL_VAR backoff_max>" style="width:80px;">
-    </div>
-
-    <div>
-      <span class="help-inline">
-        <label for="topic_identifier"><strong>Topic Identifier:</strong></label>
-        <span class="help-tip" title="Legt fest, ob die MQTT-Untertopics über den Gerätenamen oder die node_id gebildet werden.">?</span>
-      </span>
-      <select id="topic_identifier" name="topic_identifier">
-        <option value="name" <TMPL_VAR topic_identifier_name_selected>>name</option>
-        <option value="node_id" <TMPL_VAR topic_identifier_node_id_selected>>node_id</option>
-      </select>
-    </div>
-    <div>
-      <span class="help-inline">
-        <label for="rain_poll_interval"><strong>Rain Poll Interval (s):</strong></label>
-        <span class="help-tip" title="Intervall für die indirekte Regenstatus-Abfrage an Fenstern mit Regensensor.">?</span>
-      </span>
-      <input id="rain_poll_interval" type="text" name="rain_poll_interval" value="<TMPL_VAR rain_poll_interval>" style="width:80px;">
-    </div>
-
-  </div>
-
-  <p>
-    <span class="help-inline">
-      <label for="debug_verbose">
-        <input id="debug_verbose" type="checkbox" name="debug_verbose" value="1" <TMPL_VAR debug_verbose_checked>>
-        Verbose Logging
-      </label>
-      <span class="help-tip" title="Aktiviert ausführliche Debug-Meldungen im Plugin-Log.">?</span>
-    </span>
-  </p>
-
-  <p>
-    <span class="help-inline">
-      <label for="publish_rain_raw_limit">
-        <input id="publish_rain_raw_limit" type="checkbox" name="publish_rain_raw_limit" value="1" <TMPL_VAR publish_rain_raw_limit_checked>>
-        Rain Raw Limit veröffentlichen
-      </label>
-      <span class="help-tip" title="Veröffentlicht zusätzlich den Rohwert der Regen-bezogenen Öffnungsbegrenzung als MQTT-Topic rain_raw_limit.">?</span>
-    </span>
-  </p>
-
-  <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
-</fieldset>
-
-<!-- Recovery -->
-<fieldset style="border:1px solid #ddd; padding:10px; margin:0 0 1em 0;">
-  <legend style="font-weight:bold;">Recovery / Power-Cycle</legend>
-
-  <p>
-    <span class="help-inline">
-      <label for="external_recovery_enabled">
-        <input id="external_recovery_enabled" type="checkbox" name="external_recovery_enabled" value="1" <TMPL_VAR external_recovery_enabled_checked>>
-        Externe Recovery aktivieren
-      </label>
-      <span class="help-tip" title="Fordert bei wiederholten Fehlern einen externen Power-Cycle an.">?</span>
-    </span>
-  </p>
-
-  <!-- 2 Spalten für alle Recovery-Felder -->
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
-
-    <div>
-      <span class="help-inline">
-        <label for="external_recovery_threshold"><strong>Recovery Threshold:</strong></label>
-        <span class="help-tip" title="Anzahl Fehler bis Recovery ausgelöst wird.">?</span>
-      </span>
-      <input id="external_recovery_threshold" type="text" name="external_recovery_threshold" value="<TMPL_VAR external_recovery_threshold>" style="width:80px;">
-    </div>
-
-    <div>
-      <span class="help-inline">
-        <label for="external_recovery_cooldown"><strong>Recovery Cooldown (s):</strong></label>
-        <span class="help-tip" title="Mindestabstand zwischen Recovery-Aktionen.">?</span>
-      </span>
-      <input id="external_recovery_cooldown" type="text" name="external_recovery_cooldown" value="<TMPL_VAR external_recovery_cooldown>" style="width:80px;">
-    </div>
-
-    <div>
-      <span class="help-inline">
-        <label for="external_recovery_grace"><strong>Recovery Grace (s):</strong></label>
-        <span class="help-tip" title="Wartezeit nach Recovery.">?</span>
-      </span>
-      <input id="external_recovery_grace" type="text" name="external_recovery_grace" value="<TMPL_VAR external_recovery_grace>" style="width:80px;">
-    </div>
-
-    <div>
-      <span class="help-inline">
-        <label for="preventive_recovery_hours"><strong>Präventiver Power-Cycle (h):</strong></label>
-        <span class="help-tip" title="Optionaler präventiver Recovery-Trigger nach X Stunden; veröffentlicht eine vorsorgliche externe Reboot-/Power-Cycle-Anforderung für die KLF200, um Verbindungsproblemen vorzubeugen (0 = deaktiviert)">?</span>
-      </span>
-      <input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>" style="width:80px;">
-    </div>
-
-  </div>
-</fieldset>
 
   <div style="text-align:left; margin-top:3px;">
     <button style="width:210px;"
             type="submit"
             name="save"
             value="Save"
-            class="ui-btn ui-icon-check ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini">Speichern</button>
+            class="ui-btn ui-icon-check ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini"><TMPL_VAR UI.SAVE></button>
   </div>
 </form>
 
 <script>
+const I18N = {
+  serviceError: '<TMPL_VAR UI.SERVICE_ERROR>',
+  restarting: '<TMPL_VAR UI.RESTARTING>',
+  restartFailed: '<TMPL_VAR UI.RESTART_FAILED>',
+  stopping: '<TMPL_VAR UI.STOPPING>',
+  stopFailed: '<TMPL_VAR UI.STOP_FAILED>',
+  unknown: '<TMPL_VAR UI.UNKNOWN>'
+};
+
 function setServiceState(msg, color, pid, klfStatus) {
   document.getElementById('servicestate').innerHTML =
     '<span style="color:' + color + '">' +
-      msg + ' | PID: ' + (pid || '-') + ' | KLF: ' + (klfStatus || 'unknown') +
+      msg + ' | PID: ' + (pid || '-') + ' | KLF: ' + (klfStatus || I18N.unknown) +
     '</span>';
 }
 
@@ -298,35 +349,25 @@ function loadServiceStatus() {
       let color = 'gray';
       if (d.state === 'active') color = 'green';
       if (d.error) color = 'red';
-      setServiceState(d.message || d.state || 'unknown', color, d.pid, d.klf_status);
+      setServiceState(d.message || d.state || I18N.unknown, color, d.pid, d.klf_status);
     })
-    .catch(() => setServiceState('Servicefehler', 'red', '-', 'unknown'));
+    .catch(() => setServiceState(I18N.serviceError, 'red', '-', I18N.unknown));
 }
 
 function restartService() {
-  setServiceState('restarting...', 'blue', '…', 'unknown');
+  setServiceState(I18N.restarting, 'blue', '…', I18N.unknown);
   postAjax('ajax=restartvlx')
     .then(() => setTimeout(loadServiceStatus, 1500))
-    .catch(() => setServiceState('restart failed', 'red', '-', 'unknown'));
+    .catch(() => setServiceState(I18N.restartFailed, 'red', '-', I18N.unknown));
 }
 
 function stopService() {
-  setServiceState('stopping...', 'orange', '…', 'unknown');
+  setServiceState(I18N.stopping, 'orange', '…', I18N.unknown);
   postAjax('ajax=stopvlx')
     .then(() => setTimeout(loadServiceStatus, 1000))
-    .catch(() => setServiceState('stop failed', 'red', '-', 'unknown'));
+    .catch(() => setServiceState(I18N.stopFailed, 'red', '-', I18N.unknown));
 }
 
 setInterval(loadServiceStatus, 5000);
 document.addEventListener('DOMContentLoaded', loadServiceStatus);
 </script>
-<style>
-.ui-checkbox .ui-btn {
-  display: inline-block !important;
-  width: 300px !important;
-  box-sizing: border-box !important;
-}
-#topic_identifier-button {
-  width: 240px !important;
-}
-</style>
