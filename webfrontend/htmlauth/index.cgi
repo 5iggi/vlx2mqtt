@@ -382,6 +382,7 @@ $template->param(
     topic_identifier_node_id_selected   => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'node_id' ? 'selected' : ''),
     rain_poll_interval                  => maybe_unmangle($cfg->{'vlx2mqtt.rain_poll_interval'} || '300'),
     publish_rain_raw_limit_checked      => ($cfg->{'vlx2mqtt.publish_rain_raw_limit'} ? 'checked' : ''),
+    ICON_SRC                            => get_plugin_icon(128) || '/system/images/icons/vlx2mqtt/icon.svg',
 );
 
 my $plugintitle  = 'VLX2MQTT KLF200 Bridge';
