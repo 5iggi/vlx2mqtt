@@ -8,31 +8,40 @@ use HTML::Template;
 use Config::Simple;
 use JSON;
 use FindBin qw($Bin);
-
 use LoxBerry::System;
 use LoxBerry::Web;
-use LoxBerry::Log;
-use LoxBerry::JSON;
 
-my $cgi  = CGI->new;
-my $ajax = $cgi->param('ajax') // '';
-
-my $config_file  = '/opt/loxberry/config/plugins/vlx2mqtt/vlx2mqtt.cfg';
+my $cgi         = CGI->new;
+my $ajax        = $cgi->param('ajax') // '';
+my $config_file = '/opt/loxberry/config/plugins/vlx2mqtt/vlx2mqtt.cfg';
 my $service_name = 'vlx2mqtt.service';
 my $default_logfile = '/opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log';
 
-# ------------------------------------------------------------
-# Plugin metadata + navbar
-# ------------------------------------------------------------
-my $plugin = eval { LoxBerry::System::plugindata() } || {};
-our %navbar;
-#$navbar{10}{Name} = $plugin->{PLUGINDB_TITLE} || 'vlx2mqtt';
-$navbar{10}{Name} = 'VLX2MQTT KLF200 Bridge';
-$navbar{10}{URL}  = 'index.cgi';
+my %DEFAULTS = (
+    'vlx2mqtt.klf_host'                    => 'VELUX-KLF-DE3B.fritz.box',
+    'vlx2mqtt.klf_pw'                      => 'KLF_WiFi_PASSWORT',
+    'vlx2mqtt.mqtt_host'                   => '127.0.0.1',
+    'vlx2mqtt.mqtt_port'                   => '1883',
+    'vlx2mqtt.mqtt_user'                   => 'loxberry',
+    'vlx2mqtt.mqtt_pw'                     => 'MQTT_PASSWORT',
+    'vlx2mqtt.root_topic'                  => 'vlx2mqtt',
+    'vlx2mqtt.initial_delay'               => '2.5',
+    'vlx2mqtt.connect_timeout'             => '30.0',
+    'vlx2mqtt.moving_timeout'              => '60.0',
+    'vlx2mqtt.backoff_max'                 => '30.0',
+    'vlx2mqtt.verbose'                     => '0',
+    'vlx2mqtt.logfile'                     => $default_logfile,
+    'vlx2mqtt.external_recovery_enabled'   => '0',
+    'vlx2mqtt.external_recovery_threshold' => '4',
+    'vlx2mqtt.external_recovery_cooldown'  => '1800',
+    'vlx2mqtt.external_recovery_grace'     => '120',
+    'vlx2mqtt.external_recovery_topic'     => 'vlx2mqtt/recovery/powercycle_required',
+    'vlx2mqtt.preventive_recovery_hours'   => '0',
+    'vlx2mqtt.topic_identifier'            => 'name',
+    'vlx2mqtt.rain_poll_interval'          => '300',
+    'vlx2mqtt.publish_rain_raw_limit'      => '0',
+);
 
-# ------------------------------------------------------------
-# Template path
-# ------------------------------------------------------------
 sub template_path {
     no strict 'vars';
     if (defined $lbptemplatedir && $lbptemplatedir && -e "$lbptemplatedir/index.html") {
@@ -41,42 +50,14 @@ sub template_path {
     return "$Bin/index.html";
 }
 
-# ------------------------------------------------------------
-# CFG helpers (section [vlx2mqtt])
-# ------------------------------------------------------------
-my %DEFAULTS = (
-    'vlx2mqtt.klf_host'                  => 'VELUX-KLF-DE3B.fritz.box',
-    'vlx2mqtt.klf_pw'                    => 'KLF_WiFi_PASSWORT',
-    'vlx2mqtt.mqtt_host'                 => '127.0.0.1',
-    'vlx2mqtt.mqtt_port'                 => '1883',
-    'vlx2mqtt.mqtt_user'                 => 'loxberry',
-    'vlx2mqtt.mqtt_pw'                   => 'MQTT_PASSWORT',
-    'vlx2mqtt.root_topic'                => 'vlx2mqtt',
-    'vlx2mqtt.initial_delay'             => '2.5',
-    'vlx2mqtt.connect_timeout'           => '30.0',
-    'vlx2mqtt.moving_timeout'            => '60.0',
-    'vlx2mqtt.backoff_max'               => '30.0',
-    'vlx2mqtt.verbose'                   => '0',
-    'vlx2mqtt.logfile'                   => $default_logfile,
-    'vlx2mqtt.external_recovery_enabled' => '1',
-    'vlx2mqtt.external_recovery_threshold' => '4',
-    'vlx2mqtt.external_recovery_cooldown' => '1800',
-    'vlx2mqtt.external_recovery_grace'   => '120',
-    'vlx2mqtt.external_recovery_topic'   => 'vlx2mqtt/recovery/powercycle_required',
-    'vlx2mqtt.preventive_recovery_hours' => '24',
-    'vlx2mqtt.topic_identifier'           => 'name',
-    'vlx2mqtt.rain_poll_interval'         => '300',
-    'vlx2mqtt.publish_rain_raw_limit'     => '0',
-);
-
 sub load_cfg_hash {
     my ($file) = @_;
     my %cfg = %DEFAULTS;
-    my $cobj;
-    eval { $cobj = Config::Simple->new($file); };
-    if (!$@ && $cobj) {
-        foreach my $key (keys %DEFAULTS) {
-            my $val = eval { $cobj->param($key) };
+    my $cs;
+    eval { $cs = Config::Simple->new($file); };
+    if (!$@ && $cs) {
+        for my $key (keys %DEFAULTS) {
+            my $val = eval { $cs->param($key) };
             $cfg{$key} = $val if defined $val;
         }
     }
@@ -86,26 +67,26 @@ sub load_cfg_hash {
 sub save_cfg_hash {
     my ($file, $cfg) = @_;
     my $cs = Config::Simple->new(syntax => 'ini');
-    foreach my $key (sort keys %{$cfg}) {
+    for my $key (sort keys %{$cfg}) {
         $cs->param($key, $cfg->{$key});
     }
     $cs->write($file) or die "Cannot write config $file";
+    chmod 0600, $file;
 }
 
-# ------------------------------------------------------------
-# Template + language
-# ------------------------------------------------------------
-my $template = HTML::Template->new(
-    filename          => template_path(),
-    global_vars       => 1,
-    loop_context_vars => 1,
-    die_on_bad_params => 0,
-);
-my %L = eval { LoxBerry::Web::readlanguage($template, 'language.ini') };
+sub trim {
+    my ($v) = @_;
+    $v = '' if !defined $v;
+    $v =~ s/^\s+//;
+    $v =~ s/\s+$//;
+    return $v;
+}
 
-# ------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------
+sub bool_param {
+    my ($name) = @_;
+    return defined $cgi->param($name) ? '1' : '0';
+}
+
 sub json_out {
     my ($obj) = @_;
     print $cgi->header(-type => 'application/json', -charset => 'utf-8');
@@ -114,11 +95,11 @@ sub json_out {
 }
 
 sub service_status {
-    my $active = `systemctl is-active $service_name 2>/dev/null`;
+    my $active = qx(systemctl is-active $service_name 2>/dev/null);
     chomp $active;
-    $active = 'unknown' if !$active;
+    $active ||= 'unknown';
 
-    my $pid = `systemctl show -p MainPID --value $service_name 2>/dev/null`;
+    my $pid = qx(systemctl show -p MainPID --value $service_name 2>/dev/null);
     chomp $pid;
     $pid = '-' if !$pid || $pid eq '0';
 
@@ -134,215 +115,198 @@ sub check_pin_if_supplied {
 
 sub run_service_action {
     my ($action) = @_;
-    my $rc = system('sudo', 'systemctl', $action, $service_name);
+    my $rc = system("sudo systemctl $action $service_name >/dev/null 2>&1");
     my ($active, $pid) = service_status();
     return {
         error   => ($rc == 0 ? 0 : 1),
         action  => $action,
         state   => $active,
         pid     => $pid,
-        message => ($rc == 0 ? 'ok' : "${action} failed (rc=$rc)"),
+        message => ($rc == 0 ? 'ok' : "$action failed (rc=$rc)"),
     };
 }
 
 sub mqtt_read_topic_once {
-    my ($cfgref, $topic) = @_;
-    return (1, 'Invalid topic', undef) unless $topic =~ m{^[-A-Za-z0-9_/]+$};
+    my ($cfg, $topic) = @_;
+    return (1, 'Invalid topic', undef) unless defined $topic && $topic ne '';
 
-    my $host = $cfgref->{'vlx2mqtt.mqtt_host'} || '127.0.0.1';
-    my $port = $cfgref->{'vlx2mqtt.mqtt_port'} || '1883';
-    my $user = $cfgref->{'vlx2mqtt.mqtt_user'} || '';
-    my $pass = $cfgref->{'vlx2mqtt.mqtt_pw'} || '';
+    my @cmd = ('mosquitto_sub', '-h', $cfg->{'vlx2mqtt.mqtt_host'}, '-p', $cfg->{'vlx2mqtt.mqtt_port'}, '-C', '1', '-W', '2', '-t', $topic);
+    push @cmd, ('-u', $cfg->{'vlx2mqtt.mqtt_user'}) if defined $cfg->{'vlx2mqtt.mqtt_user'} && $cfg->{'vlx2mqtt.mqtt_user'} ne '';
+    push @cmd, ('-P', $cfg->{'vlx2mqtt.mqtt_pw'})   if defined $cfg->{'vlx2mqtt.mqtt_pw'}   && $cfg->{'vlx2mqtt.mqtt_pw'} ne '';
 
-    my @cmd = ('/usr/bin/mosquitto_sub', '-h', $host, '-p', $port, '-t', $topic, '-C', '1', '-W', '2');
-    push @cmd, ('-u', $user) if $user ne '';
-    push @cmd, ('-P', $pass) if $pass ne '';
-
-    return (1, 'mosquitto_sub not found', undef) unless -x $cmd[0];
-
-    my $payload = '';
-    my $rc = 1;
-    if (open my $fh, '-|', @cmd) {
-        local $/;
-        $payload = <$fh>;
-        close $fh;
-        $rc = $? >> 8;
+    my $pid = open my $fh, '-|', @cmd;
+    if (!$pid) {
+        return (1, 'Failed to execute mosquitto_sub', undef);
     }
 
-    chomp($payload) if defined $payload;
-    return ($rc == 0)
-        ? (0, 'ok', $payload)
-        : (1, "no retained message or mosquitto_sub failed (rc=$rc)", undef);
+    my $payload = <$fh>;
+    close $fh;
+    chomp $payload if defined $payload;
+
+    if (!defined $payload || $payload eq '') {
+        return (1, 'No payload received', undef);
+    }
+
+    return (0, 'ok', $payload);
+}
+
+sub validate_config {
+    my ($cfg) = @_;
+
+    for my $required (qw(vlx2mqtt.klf_host vlx2mqtt.mqtt_host vlx2mqtt.root_topic)) {
+        return "$required darf nicht leer sein" if !defined $cfg->{$required} || trim($cfg->{$required}) eq '';
+    }
+
+    return 'MQTT Port ungültig' unless $cfg->{'vlx2mqtt.mqtt_port'} =~ /^\d+$/ && $cfg->{'vlx2mqtt.mqtt_port'} >= 1 && $cfg->{'vlx2mqtt.mqtt_port'} <= 65535;
+    return 'Initial Delay ungültig' unless $cfg->{'vlx2mqtt.initial_delay'} =~ /^\d+(?:\.\d+)?$/;
+    return 'Connect Timeout ungültig' unless $cfg->{'vlx2mqtt.connect_timeout'} =~ /^\d+(?:\.\d+)?$/;
+    return 'Moving Timeout ungültig' unless $cfg->{'vlx2mqtt.moving_timeout'} =~ /^\d+(?:\.\d+)?$/;
+    return 'Backoff Max ungültig' unless $cfg->{'vlx2mqtt.backoff_max'} =~ /^\d+(?:\.\d+)?$/;
+    return 'Rain Poll Interval ungültig' unless $cfg->{'vlx2mqtt.rain_poll_interval'} =~ /^\d+$/ && $cfg->{'vlx2mqtt.rain_poll_interval'} >= 60;
+    return 'Recovery Threshold ungültig' unless $cfg->{'vlx2mqtt.external_recovery_threshold'} =~ /^\d+$/;
+    return 'Recovery Cooldown ungültig' unless $cfg->{'vlx2mqtt.external_recovery_cooldown'} =~ /^\d+(?:\.\d+)?$/;
+    return 'Recovery Grace ungültig' unless $cfg->{'vlx2mqtt.external_recovery_grace'} =~ /^\d+(?:\.\d+)?$/;
+    return 'Präventiver Power-Cycle ungültig' unless $cfg->{'vlx2mqtt.preventive_recovery_hours'} =~ /^\d+(?:\.\d+)?$/;
+    return 'Topic Identifier ungültig' unless ($cfg->{'vlx2mqtt.topic_identifier'} || '') =~ /^(?:name|node_id)$/;
+
+    return undef;
 }
 
 my $cfg = load_cfg_hash($config_file);
+my $notice = '';
+my $notice_class = 'notice-info';
 
-# ------------------------------------------------------------
-# AJAX handlers
-# ------------------------------------------------------------
 if ($ajax) {
     if (check_pin_if_supplied()) {
         json_out({ error => 1, message => 'Invalid PIN' });
     }
 
-    if ($ajax eq 'gettopic') {
-        my $root_topic = $cfg->{'vlx2mqtt.root_topic'} || 'vlx2mqtt';
-        my $topic = $cgi->param('topic') // '';
-        unless ($topic =~ m{^\Q$root_topic\E/[A-Za-z0-9_\-/]+$}) {
-            json_out({ error => 1, message => 'Invalid topic' });
-        }
-        my ($err, $msg, $payload) = mqtt_read_topic_once($cfg, $topic);
-        json_out({ error => $err, topic => $topic, payload => $payload, message => $msg });
-    }
-
     if ($ajax eq 'statusvlx') {
         my ($active, $pid) = service_status();
-        my $root_topic = $cfg->{'vlx2mqtt.root_topic'} || 'vlx2mqtt';
-        my ($err, $msg, $klf_status) = mqtt_read_topic_once($cfg, "$root_topic/status");
-        my $message = ($active eq 'active')
-            ? ($L{MSG_SERVICE_OK} || 'OK')
-            : ($L{MSG_SERVICE_STOPPED} || 'STOPPED');
+        my $state_topic = trim($cfg->{'vlx2mqtt.root_topic'}) . '/status_live';
+        my ($err, $msg, $payload) = mqtt_read_topic_once($cfg, $state_topic);
         json_out({
             error      => 0,
             pid        => $pid,
             state      => $active,
-            message    => $message,
-            klf_status => ($err ? 'unknown' : $klf_status),
+            message    => ($active eq 'active' ? 'OK' : $active),
+            klf_status => ($err ? 'unknown' : $payload),
         });
     }
-
-    if ($ajax eq 'restartvlx') {
+    elsif ($ajax eq 'restartvlx') {
         json_out(run_service_action('restart'));
     }
-
-    if ($ajax eq 'stopvlx') {
+    elsif ($ajax eq 'stopvlx') {
         json_out(run_service_action('stop'));
     }
-
-    json_out({ error => 1, message => "Unknown action '$ajax'" });
+    elsif ($ajax eq 'gettopic') {
+        my $topic = trim($cgi->param('topic') // '');
+        my ($err, $msg, $payload) = mqtt_read_topic_once($cfg, $topic);
+        json_out({
+            error   => $err,
+            topic   => $topic,
+            payload => $payload,
+            message => $msg,
+        });
+    }
+    else {
+        json_out({ error => 1, message => 'Unknown ajax action' });
+    }
 }
 
-# ------------------------------------------------------------
-# Save handler
-# ------------------------------------------------------------
-my $notice = '';
 if ($cgi->param('save')) {
     my %newcfg = %{$cfg};
 
-    my $klf_host                    = $cgi->param('klf_host')                    // $cfg->{'vlx2mqtt.klf_host'};
-    my $klf_pw                      = $cgi->param('klf_pw')                      // $cfg->{'vlx2mqtt.klf_pw'};
-    my $mqtt_host                   = $cgi->param('mqtt_host')                   // $cfg->{'vlx2mqtt.mqtt_host'};
-    my $mqtt_port                   = $cgi->param('mqtt_port')                   // $cfg->{'vlx2mqtt.mqtt_port'};
-    my $mqtt_user                   = $cgi->param('mqtt_user')                   // $cfg->{'vlx2mqtt.mqtt_user'};
-    my $mqtt_pw                     = $cgi->param('mqtt_pw')                     // $cfg->{'vlx2mqtt.mqtt_pw'};
-    my $root_topic                  = $cgi->param('root_topic')                  // $cfg->{'vlx2mqtt.root_topic'};
-    my $initial_delay               = $cgi->param('initial_delay')               // $cfg->{'vlx2mqtt.initial_delay'};
-    my $connect_timeout             = $cgi->param('connect_timeout')             // $cfg->{'vlx2mqtt.connect_timeout'};
-    my $moving_timeout              = $cgi->param('moving_timeout')              // $cfg->{'vlx2mqtt.moving_timeout'};
-    my $backoff_max                 = $cgi->param('backoff_max')                 // $cfg->{'vlx2mqtt.backoff_max'};
-    my $logfile                     = $cgi->param('logfile')                     // $cfg->{'vlx2mqtt.logfile'};
-    my $external_recovery_enabled   = $cgi->param('external_recovery_enabled') ? 1 : 0;
-    my $external_recovery_threshold = $cgi->param('external_recovery_threshold') // $cfg->{'vlx2mqtt.external_recovery_threshold'};
-    my $external_recovery_cooldown  = $cgi->param('external_recovery_cooldown')  // $cfg->{'vlx2mqtt.external_recovery_cooldown'};
-    my $external_recovery_grace     = $cgi->param('external_recovery_grace')     // $cfg->{'vlx2mqtt.external_recovery_grace'};
-    my $external_recovery_topic     = $cgi->param('external_recovery_topic')     // $cfg->{'vlx2mqtt.external_recovery_topic'};
-    my $preventive_recovery_hours   = $cgi->param('preventive_recovery_hours')   // $cfg->{'vlx2mqtt.preventive_recovery_hours'};
-    my $topic_identifier            = $cgi->param('topic_identifier')            // $cfg->{'vlx2mqtt.topic_identifier'};
-    my $rain_poll_interval          = $cgi->param('rain_poll_interval')          // $cfg->{'vlx2mqtt.rain_poll_interval'};
-    my $publish_rain_raw_limit      = $cgi->param('publish_rain_raw_limit') ? 1 : 0;
-    my $verbose                     = $cgi->param('debug_verbose') ? 1 : 0;
+    $newcfg{'vlx2mqtt.klf_host'} = trim($cgi->param('klf_host'));
+    $newcfg{'vlx2mqtt.klf_pw'} = trim($cgi->param('klf_pw'));
+    $newcfg{'vlx2mqtt.mqtt_host'} = trim($cgi->param('mqtt_host'));
+    $newcfg{'vlx2mqtt.mqtt_port'} = trim($cgi->param('mqtt_port'));
+    $newcfg{'vlx2mqtt.mqtt_user'} = trim($cgi->param('mqtt_user'));
+    $newcfg{'vlx2mqtt.mqtt_pw'} = trim($cgi->param('mqtt_pw'));
+    $newcfg{'vlx2mqtt.root_topic'} = trim($cgi->param('root_topic'));
+    $newcfg{'vlx2mqtt.initial_delay'} = trim($cgi->param('initial_delay'));
+    $newcfg{'vlx2mqtt.connect_timeout'} = trim($cgi->param('connect_timeout'));
+    $newcfg{'vlx2mqtt.moving_timeout'} = trim($cgi->param('moving_timeout'));
+    $newcfg{'vlx2mqtt.backoff_max'} = trim($cgi->param('backoff_max'));
+    $newcfg{'vlx2mqtt.verbose'} = bool_param('debug_verbose');
+    $newcfg{'vlx2mqtt.logfile'} = trim($cgi->param('logfile')) || $default_logfile;
+    $newcfg{'vlx2mqtt.topic_identifier'} = trim($cgi->param('topic_identifier')) || 'name';
+    $newcfg{'vlx2mqtt.rain_poll_interval'} = trim($cgi->param('rain_poll_interval'));
+    $newcfg{'vlx2mqtt.publish_rain_raw_limit'} = bool_param('publish_rain_raw_limit');
+    $newcfg{'vlx2mqtt.external_recovery_enabled'} = bool_param('external_recovery_enabled');
+    $newcfg{'vlx2mqtt.external_recovery_threshold'} = trim($cgi->param('external_recovery_threshold'));
+    $newcfg{'vlx2mqtt.external_recovery_cooldown'} = trim($cgi->param('external_recovery_cooldown'));
+    $newcfg{'vlx2mqtt.external_recovery_grace'} = trim($cgi->param('external_recovery_grace'));
+    $newcfg{'vlx2mqtt.external_recovery_topic'} = trim($cgi->param('external_recovery_topic')) || 'vlx2mqtt/recovery/powercycle_required';
+    $newcfg{'vlx2mqtt.preventive_recovery_hours'} = trim($cgi->param('preventive_recovery_hours'));
 
-    $mqtt_port                   = ($mqtt_port =~ /^\d+$/) ? int($mqtt_port) : $cfg->{'vlx2mqtt.mqtt_port'};
-    $initial_delay               = ($initial_delay =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $initial_delay : $cfg->{'vlx2mqtt.initial_delay'};
-    $connect_timeout             = ($connect_timeout =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $connect_timeout : $cfg->{'vlx2mqtt.connect_timeout'};
-    $moving_timeout              = ($moving_timeout =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $moving_timeout : $cfg->{'vlx2mqtt.moving_timeout'};
-    $backoff_max                 = ($backoff_max =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $backoff_max : $cfg->{'vlx2mqtt.backoff_max'};
-    $external_recovery_threshold = ($external_recovery_threshold =~ /^\d+$/) ? int($external_recovery_threshold) : $cfg->{'vlx2mqtt.external_recovery_threshold'};
-    $external_recovery_cooldown  = ($external_recovery_cooldown =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $external_recovery_cooldown : $cfg->{'vlx2mqtt.external_recovery_cooldown'};
-    $external_recovery_grace     = ($external_recovery_grace =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $external_recovery_grace : $cfg->{'vlx2mqtt.external_recovery_grace'};
-    $preventive_recovery_hours   = ($preventive_recovery_hours =~ /^[0-9]+(?:\.[0-9]+)?$/) ? $preventive_recovery_hours : $cfg->{'vlx2mqtt.preventive_recovery_hours'};
-    $topic_identifier            = ($topic_identifier && $topic_identifier =~ /^(?:name|node_id)$/) ? $topic_identifier : ($cfg->{'vlx2mqtt.topic_identifier'} || 'name');
-    $rain_poll_interval          = ($rain_poll_interval =~ /^\d+$/) ? int($rain_poll_interval) : ($cfg->{'vlx2mqtt.rain_poll_interval'} || 300);
-
-    $newcfg{'vlx2mqtt.klf_host'}                   = $klf_host;
-    $newcfg{'vlx2mqtt.klf_pw'}                     = $klf_pw;
-    $newcfg{'vlx2mqtt.mqtt_host'}                  = $mqtt_host;
-    $newcfg{'vlx2mqtt.mqtt_port'}                  = $mqtt_port;
-    $newcfg{'vlx2mqtt.mqtt_user'}                  = $mqtt_user;
-    $newcfg{'vlx2mqtt.mqtt_pw'}                    = $mqtt_pw;
-    $newcfg{'vlx2mqtt.root_topic'}                 = $root_topic;
-    $newcfg{'vlx2mqtt.initial_delay'}              = $initial_delay;
-    $newcfg{'vlx2mqtt.connect_timeout'}            = $connect_timeout;
-    $newcfg{'vlx2mqtt.moving_timeout'}             = $moving_timeout;
-    $newcfg{'vlx2mqtt.backoff_max'}                = $backoff_max;
-    $newcfg{'vlx2mqtt.logfile'}                    = $logfile;
-    $newcfg{'vlx2mqtt.verbose'}                    = $verbose;
-    $newcfg{'vlx2mqtt.external_recovery_enabled'}  = $external_recovery_enabled;
-    $newcfg{'vlx2mqtt.external_recovery_threshold'}= $external_recovery_threshold;
-    $newcfg{'vlx2mqtt.external_recovery_cooldown'} = $external_recovery_cooldown;
-    $newcfg{'vlx2mqtt.external_recovery_grace'}    = $external_recovery_grace;
-    $newcfg{'vlx2mqtt.external_recovery_topic'}    = $external_recovery_topic;
-    $newcfg{'vlx2mqtt.preventive_recovery_hours'}  = $preventive_recovery_hours;
-    $newcfg{'vlx2mqtt.topic_identifier'}            = $topic_identifier;
-    $newcfg{'vlx2mqtt.rain_poll_interval'}          = $rain_poll_interval;
-    $newcfg{'vlx2mqtt.publish_rain_raw_limit'}      = $publish_rain_raw_limit;
-
-    eval {
-        save_cfg_hash($config_file, \%newcfg);
+    my $validation_error = validate_config(\%newcfg);
+    if ($validation_error) {
+        $notice = $validation_error;
+        $notice_class = 'notice-error';
         $cfg = \%newcfg;
-        $notice = 'Konfiguration gespeichert.';
-        system('sudo', 'systemctl', 'restart', $service_name);
-    };
-    if ($@) {
-        $notice = 'Fehler beim Speichern: ' . $@;
+    } else {
+        eval { save_cfg_hash($config_file, \%newcfg); };
+        if ($@) {
+            $notice = 'Speichern fehlgeschlagen: ' . $@;
+            $notice_class = 'notice-error';
+            $cfg = \%newcfg;
+        } else {
+            $notice = 'Konfiguration gespeichert. Bitte den Dienst neu starten, damit Änderungen wirksam werden.';
+            $notice_class = 'notice-success';
+            $cfg = \%newcfg;
+        }
     }
 }
 
-# ------------------------------------------------------------
-# Service state for template
-# ------------------------------------------------------------
-my ($service_state, $service_pid, $service_color) = ('', '-', 'gray');
-my ($active, $pid) = service_status();
-if ($active eq 'active') {
-    $service_state = $L{MSG_SERVICE_OK} || 'OK';
-    $service_color = 'green';
-    $service_pid   = $pid || '-';
-} else {
-    $service_state = $L{MSG_SERVICE_STOPPED} || 'STOPPED';
-    $service_color = 'gray';
-}
-
-$template->param(
-    SERVICE_STATE                     => $service_state,
-    SERVICE_PID                       => $service_pid,
-    SERVICE_COLOR                     => $service_color,
-    NOTICE                            => $notice,
-    klf_host                          => $cfg->{'vlx2mqtt.klf_host'},
-    klf_pw                            => $cfg->{'vlx2mqtt.klf_pw'},
-    mqtt_host                         => $cfg->{'vlx2mqtt.mqtt_host'},
-    mqtt_port                         => $cfg->{'vlx2mqtt.mqtt_port'},
-    mqtt_user                         => $cfg->{'vlx2mqtt.mqtt_user'},
-    mqtt_pw                           => $cfg->{'vlx2mqtt.mqtt_pw'},
-    root_topic                        => $cfg->{'vlx2mqtt.root_topic'},
-    initial_delay                     => $cfg->{'vlx2mqtt.initial_delay'},
-    connect_timeout                   => $cfg->{'vlx2mqtt.connect_timeout'},
-    moving_timeout                    => $cfg->{'vlx2mqtt.moving_timeout'},
-    backoff_max                       => $cfg->{'vlx2mqtt.backoff_max'},
-    logfile                           => $cfg->{'vlx2mqtt.logfile'},
-    debug_verbose_checked             => ($cfg->{'vlx2mqtt.verbose'} ? 'checked' : ''),
-    external_recovery_enabled_checked => ($cfg->{'vlx2mqtt.external_recovery_enabled'} ? 'checked' : ''),
-    external_recovery_threshold       => $cfg->{'vlx2mqtt.external_recovery_threshold'},
-    external_recovery_cooldown        => $cfg->{'vlx2mqtt.external_recovery_cooldown'},
-    external_recovery_grace           => $cfg->{'vlx2mqtt.external_recovery_grace'},
-    external_recovery_topic           => $cfg->{'vlx2mqtt.external_recovery_topic'},
-    preventive_recovery_hours         => $cfg->{'vlx2mqtt.preventive_recovery_hours'},
-    topic_identifier_name_selected    => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'name' ? 'selected' : ''),
-    topic_identifier_node_id_selected => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'node_id' ? 'selected' : ''),
-    rain_poll_interval                => $cfg->{'vlx2mqtt.rain_poll_interval'} || '300',
-    publish_rain_raw_limit_checked    => ($cfg->{'vlx2mqtt.publish_rain_raw_limit'} ? 'checked' : ''),
+my $template = HTML::Template->new(
+    filename           => template_path(),
+    global_vars        => 1,
+    loop_context_vars  => 1,
+    die_on_bad_params  => 0,
 );
 
-my $plugintitle  = ($plugin->{PLUGINDB_TITLE} || 'vlx2mqtt') . ' ' . ($plugin->{PLUGINDB_VERSION} || '');
+my %L = eval { LoxBerry::System::readlanguage($template, 'language.ini') };
+
+my ($active, $pid) = service_status();
+my $service_state = ($active eq 'active') ? 'OK' : 'STOPPED';
+my $service_color = ($active eq 'active') ? 'green' : 'gray';
+
+$template->param(
+    SERVICE_STATE                       => $service_state,
+    SERVICE_PID                         => $pid,
+    SERVICE_COLOR                       => $service_color,
+    NOTICE                              => $notice,
+    NOTICE_CLASS                        => $notice_class,
+    klf_host                            => $cfg->{'vlx2mqtt.klf_host'},
+    klf_pw                              => $cfg->{'vlx2mqtt.klf_pw'},
+    mqtt_host                           => $cfg->{'vlx2mqtt.mqtt_host'},
+    mqtt_port                           => $cfg->{'vlx2mqtt.mqtt_port'},
+    mqtt_user                           => $cfg->{'vlx2mqtt.mqtt_user'},
+    mqtt_pw                             => $cfg->{'vlx2mqtt.mqtt_pw'},
+    root_topic                          => $cfg->{'vlx2mqtt.root_topic'},
+    initial_delay                       => $cfg->{'vlx2mqtt.initial_delay'},
+    connect_timeout                     => $cfg->{'vlx2mqtt.connect_timeout'},
+    moving_timeout                      => $cfg->{'vlx2mqtt.moving_timeout'},
+    backoff_max                         => $cfg->{'vlx2mqtt.backoff_max'},
+    logfile                             => $cfg->{'vlx2mqtt.logfile'},
+    debug_verbose_checked               => ($cfg->{'vlx2mqtt.verbose'} ? 'checked' : ''),
+    external_recovery_enabled_checked   => ($cfg->{'vlx2mqtt.external_recovery_enabled'} ? 'checked' : ''),
+    external_recovery_threshold         => $cfg->{'vlx2mqtt.external_recovery_threshold'},
+    external_recovery_cooldown          => $cfg->{'vlx2mqtt.external_recovery_cooldown'},
+    external_recovery_grace             => $cfg->{'vlx2mqtt.external_recovery_grace'},
+    external_recovery_topic             => $cfg->{'vlx2mqtt.external_recovery_topic'},
+    preventive_recovery_hours           => $cfg->{'vlx2mqtt.preventive_recovery_hours'},
+    topic_identifier_name_selected      => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'name' ? 'selected' : ''),
+    topic_identifier_node_id_selected   => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'node_id' ? 'selected' : ''),
+    rain_poll_interval                  => $cfg->{'vlx2mqtt.rain_poll_interval'} || '300',
+    publish_rain_raw_limit_checked      => ($cfg->{'vlx2mqtt.publish_rain_raw_limit'} ? 'checked' : ''),
+    status_topic_example                => trim($cfg->{'vlx2mqtt.root_topic'}) . '/status',
+    service_status_topic_example        => trim($cfg->{'vlx2mqtt.root_topic'}) . '/service_status',
+    rain_topic_example                  => trim($cfg->{'vlx2mqtt.root_topic'}) . '/' . ((($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'node_id') ? '0' : 'Fenster_links') . '/rain',
+);
+
+my $plugintitle  = 'VLX2MQTT KLF200 Bridge';
 my $helplink     = 'https://github.com/5iggi/vlx2mqtt';
 my $helptemplate = 'help.html';
 
