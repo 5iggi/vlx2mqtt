@@ -211,9 +211,6 @@
       <span class="help-tip" title="Veröffentlicht zusätzlich den Rohwert der Regen-bezogenen Öffnungsbegrenzung als MQTT-Topic rain_raw_limit.">?</span>
     </span>
   </p>
-  <p style="margin-top:-6px; color:#555; font-size:0.95em;">
-    Beispiel: bei <code>topic_identifier = node_id</code> werden Topics wie <code>&lt;root_topic&gt;/2/position</code> oder <code>&lt;root_topic&gt;/0/rain</code> verwendet.
-  </p>
 
   <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
 </fieldset>
@@ -231,15 +228,7 @@
       <span class="help-tip" title="Fordert bei wiederholten Fehlern einen externen Power-Cycle an.">?</span>
     </span>
   </p>
-<!--
-    <div>
-      <span class="help-inline">
-        <label for="external_recovery_topic"><strong>Recovery Topic:</strong></label>
-        <span class="help-tip" title="MQTT-Topic für externen Power-Cycle.">?</span>
-      </span>
-      <input id="external_recovery_topic" type="text" name="external_recovery_topic" value="<TMPL_VAR external_recovery_topic>">
-    </div>
--->
+
   <!-- 2 Spalten für alle Recovery-Felder -->
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:900px;">
 
