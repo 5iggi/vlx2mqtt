@@ -27,6 +27,10 @@
 #rain_poll_interval {
   width: 80px;
 }
+#event_monitor_interval,
+#event_stale_warn_seconds {
+  width: 80px;
+}
 .vlx-card {
   border: 1px solid #ddd;
   border-radius: 8px;
@@ -265,7 +269,23 @@
         </span>
         <input id="rain_poll_interval" type="text" name="rain_poll_interval" value="<TMPL_VAR rain_poll_interval>" style="width:80px;">
       </div>
+      <div>
+        <span class="help-inline">
+          <label for="event_monitor_interval"><strong><TMPL_VAR UI.EVENT_MONITOR_INTERVAL></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.EVENT_MONITOR_INTERVAL>">?</span>
+        </span>
+        <input id="event_monitor_interval" type="text" name="event_monitor_interval" value="<TMPL_VAR event_monitor_interval>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="event_stale_warn_seconds"><strong><TMPL_VAR UI.EVENT_STALE_WARN_SECONDS></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.EVENT_STALE_WARN_SECONDS>">?</span>
+        </span>
+        <input id="event_stale_warn_seconds" type="text" name="event_stale_warn_seconds" value="<TMPL_VAR event_stale_warn_seconds>" style="width:80px;">
+      </div>
     </div>
+
+    <p class="vlx-muted" style="margin-top:.8em;"><TMPL_VAR UI.EVENT_MONITOR_NOTE></p>
 
     <p>
       <span class="help-inline">
