@@ -20,7 +20,7 @@ my $service_name = 'vlx2mqtt.service';
 my $default_logfile = '/opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log';
 
 my %DEFAULTS = (
-    'vlx2mqtt.klf_host'                    => 'VELUX-KLF-DE3B.fritz.box',
+    'vlx2mqtt.klf_host'                    => 'VELUX-KLF.fritz.box',
     'vlx2mqtt.klf_pw'                      => 'KLF_WiFi_PASSWORT',
     'vlx2mqtt.mqtt_host'                   => '127.0.0.1',
     'vlx2mqtt.mqtt_port'                   => '1883',
@@ -209,6 +209,12 @@ sub validate_config {
     return 'CFG.INVALID_RAIN_POLL_INTERVAL'
         unless $cfg->{'vlx2mqtt.rain_poll_interval'} =~ /^\d+$/
             && $cfg->{'vlx2mqtt.rain_poll_interval'} >= 60;
+    return 'CFG.INVALID_EVENT_MONITOR_INTERVAL'
+        unless $cfg->{'vlx2mqtt.event_monitor_interval'} =~ /^\d+$/
+            && $cfg->{'vlx2mqtt.event_monitor_interval'} >= 30;
+    return 'CFG.INVALID_EVENT_STALE_WARN_SECONDS'
+        unless $cfg->{'vlx2mqtt.event_stale_warn_seconds'} =~ /^\d+$/
+            && $cfg->{'vlx2mqtt.event_stale_warn_seconds'} >= 60;
 
     return 'CFG.INVALID_RECOVERY_THRESHOLD'
         unless $cfg->{'vlx2mqtt.external_recovery_threshold'} =~ /^\d+$/;
@@ -317,6 +323,8 @@ if ($cgi->param('save')) {
     $newcfg{'vlx2mqtt.topic_identifier'} = trim($cgi->param('topic_identifier')) || 'name';
     $newcfg{'vlx2mqtt.rain_poll_interval'} = trim($cgi->param('rain_poll_interval'));
     $newcfg{'vlx2mqtt.publish_rain_raw_limit'} = bool_param('publish_rain_raw_limit');
+    $newcfg{'vlx2mqtt.event_monitor_interval'} = trim($cgi->param('event_monitor_interval'));
+    $newcfg{'vlx2mqtt.event_stale_warn_seconds'} = trim($cgi->param('event_stale_warn_seconds'));
     $newcfg{'vlx2mqtt.external_recovery_enabled'} = bool_param('external_recovery_enabled');
     $newcfg{'vlx2mqtt.external_recovery_threshold'} = trim($cgi->param('external_recovery_threshold'));
     $newcfg{'vlx2mqtt.external_recovery_cooldown'} = trim($cgi->param('external_recovery_cooldown'));
@@ -327,7 +335,11 @@ if ($cgi->param('save')) {
 
     my $validation_error = validate_config(\%newcfg);
     if ($validation_error) {
-        $notice = lang($validation_error, $validation_error);
+        my %validation_fallback = (
+            'CFG.INVALID_EVENT_MONITOR_INTERVAL' => 'Event monitor interval must be an integer >= 30 seconds',
+            'CFG.INVALID_EVENT_STALE_WARN_SECONDS' => 'Event stale warning threshold must be an integer >= 60 seconds',
+        );
+        $notice = lang($validation_error, $validation_fallback{$validation_error} // $validation_error);
         $notice_class = 'notice-error';
         $notice_visible = 1;
         $cfg = \%newcfg;
@@ -382,6 +394,8 @@ $template->param(
     topic_identifier_node_id_selected   => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'node_id' ? 'selected' : ''),
     rain_poll_interval                  => maybe_unmangle($cfg->{'vlx2mqtt.rain_poll_interval'} || '300'),
     publish_rain_raw_limit_checked      => ($cfg->{'vlx2mqtt.publish_rain_raw_limit'} ? 'checked' : ''),
+    event_monitor_interval             => maybe_unmangle($cfg->{'vlx2mqtt.event_monitor_interval'} || '60'),
+    event_stale_warn_seconds            => maybe_unmangle($cfg->{'vlx2mqtt.event_stale_warn_seconds'} || '900'),
     ICON_SRC                            => get_plugin_icon(128) || '/system/images/icons/vlx2mqtt/icon.svg',
 );
 
