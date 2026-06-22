@@ -32,11 +32,12 @@ The plugin connects directly to the KLF200, reads positions and states from wind
 - [Control via MQTT](#control-via-mqtt)
 - [Identifier mode: `name` or `node_id`](#identifier-mode-name-or-node_id)
 - [Rain sensor](#rain-sensor)
+- [Event-driven positions](#event-driven-positions)
+- [Event monitor](#event-monitor)
+- [Installing the web interface update](#installing-the-web-interface-update)
 - [Recovery / power cycle](#recovery--power-cycle)
   - [Recommendation](#recommendation)
   - [Why is there a preventive recovery trigger?](#why-is-there-a-preventive-recovery-trigger)
-  - [Recommended usage](#recommended-usage)
-  - [Background / sources](#background--sources)
 - [Logging](#logging)
 - [Files and directories](#files-and-directories)
 - [Web interface](#web-interface)
@@ -86,6 +87,16 @@ The plugin connects directly to the KLF200, reads positions and states from wind
 ---
 
 ## Important design decisions
+
+### Event-driven positions
+This operating mode intentionally keeps **position and movement updates event-driven** via KLF/pyvlx callbacks. There is **no periodic position polling** in the normal runtime path.
+
+**Reason:** In practical testing, KLF position changes are typically delivered as asynchronous node notifications. Periodic full node reloads mainly return the latest known snapshot and increase KLF traffic, but do not reliably create new position information on their own.
+
+**Consequence:**
+- positions remain lightweight and event-driven
+- the KLF is not stressed with permanent `GetAllNodesInformation` reloads
+- delayed or missing position updates are treated primarily as a KLF-side event-path issue and not hidden by aggressive polling
 
 ### No interpolation in this version
 
@@ -175,6 +186,8 @@ preventive_recovery_hours = 0
 | `topic_identifier` | MQTT identifier per node: `name` or `node_id` |
 | `rain_poll_interval` | Polling interval for rain detection in seconds |
 | `publish_rain_raw_limit` | additionally publishes the raw value `rain_raw_limit` |
+| `event_monitor_interval` | diagnostic interval for checking whether KLF node events are still arriving |
+| `event_stale_warn_seconds` | warning threshold if no KLF node event is received for a longer time |
 | `external_recovery_enabled` | enables the external recovery / power-cycle trigger |
 | `external_recovery_threshold` | number of relevant errors before recovery is requested |
 | `external_recovery_cooldown` | minimum interval between two recovery requests |
@@ -366,16 +379,6 @@ In the event of repeated error states such as `klf_connection_refused`, the plug
 
 In practice, the KLF200 is not always stable over long periods of time when many or repeated connection attempts occur. For this reason, VLX2MQTT optionally supports a **preventive recovery trigger**.
 
-### Recommended usage
-
-- Prefer **reactive recovery** for real faults in normal operation
-- Only enable preventive recovery consciously
-- Choose preventive intervals conservatively (e.g. 24 hours or more)
-
-### Background / sources
-
-The practical motivation for this mechanism is the instability that is often observed in real KLF200 installations with repeated reconnection attempts or long uptimes.
-
 [Back to contents](#contents)
 
 ---
@@ -548,8 +551,10 @@ gettopic
 6. Move to a numeric position
 7. Check whether the window rain status (`.../rain`) is published
 8. Optionally enable `publish_rain_raw_limit = true` and observe `.../rain_raw_limit`
-9. Stop the service cleanly and verify that **no KLF reboot** is triggered
-10. Optionally test the recovery topic with an external smart plug / Loxone
+9. Leave the bridge running and verify that no event-monitor warning appears during normal KLF updates
+10. Optionally reduce `event_stale_warn_seconds` temporarily for a diagnostics test and verify the warning in the log
+11. Stop the service cleanly and verify that **no KLF reboot** is triggered
+12. Optionally test the recovery topic with an external smart plug / Loxone
 
 [Back to contents](#contents)
 
