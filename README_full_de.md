@@ -32,11 +32,10 @@ Das Plugin verbindet sich direkt mit der KLF200, liest Positionen und Zustände 
 - [Steuerung per MQTT](#steuerung-per-mqtt)
 - [Identifier-Modus: `name` oder `node_id`](#identifier-modus-name-oder-node_id)
 - [Regensensor](#regensensor)
+- [Eventbasierte Positionen](#eventbasierte-positionen)
 - [Recovery / Power-Cycle](#recovery--power-cycle)
   - [Empfehlung](#empfehlung)
   - [Warum gibt es einen präventiven Recovery-Trigger?](#warum-gibt-es-einen-präventiven-recovery-trigger)
-    - [Empfohlene Verwendung](#empfohlene-verwendung)
-    - [Hintergrund / Quellen](#hintergrund--quellen)
 - [Logging](#logging)
 - [Dateien und Verzeichnisse](#dateien-und-verzeichnisse)
 - [Weboberfläche](#weboberfläche)
@@ -86,6 +85,16 @@ Das Plugin verbindet sich direkt mit der KLF200, liest Positionen und Zustände 
 ---
 
 ## Wichtige Design-Entscheidungen
+
+### Eventbasierte Positionen
+Diese Betriebsart hält **Positions- und Bewegungsupdates bewusst eventbasiert** über die KLF-/pyvlx-Callbacks. Es gibt **kein periodisches Positions-Polling** im normalen Laufzeitpfad.
+
+**Grund:** In Praxistests werden Positionsänderungen der KLF typischerweise als asynchrone Node-Notifications geliefert. Regelmäßige vollständige Node-Reloads liefern meist nur den letzten bekannten Snapshot und erhöhen den Traffic zur KLF, erzeugen aber nicht zuverlässig neue Positionsinformationen.
+
+**Folge:**
+- Positionen bleiben leichtgewichtig und eventbasiert
+- die KLF wird nicht mit permanenten `GetAllNodesInformation`-Reloads belastet
+- verzögerte oder fehlende Positionsupdates werden primär als KLF-seitiges Event-Problem sichtbar und nicht durch aggressives Polling kaschiert
 
 ### Keine Interpolation in dieser Version
 
@@ -175,6 +184,8 @@ preventive_recovery_hours = 0
 | `topic_identifier` | MQTT-Identifier pro Node: `name` oder `node_id` |
 | `rain_poll_interval` | Polling-Intervall für die Regenabfrage in Sekunden |
 | `publish_rain_raw_limit` | veröffentlicht zusätzlich den Rohwert `rain_raw_limit` |
+| `event_monitor_interval` | Diagnoseintervall zur Prüfung, ob weiterhin KLF-Node-Events eintreffen |
+| `event_stale_warn_seconds` | Warnschwelle, wenn länger kein KLF-Node-Event empfangen wurde |
 | `external_recovery_enabled` | aktiviert externen Recovery-/Power-Cycle-Trigger |
 | `external_recovery_threshold` | Anzahl relevanter Fehler bis Recovery angefordert wird |
 | `external_recovery_cooldown` | Mindestabstand zwischen zwei Recovery-Anforderungen |
@@ -538,8 +549,10 @@ gettopic
 6. numerische Position anfahren
 7. Prüfen, ob Fenster-Regenstatus (`.../rain`) publiziert wird
 8. Optional `publish_rain_raw_limit = true` aktivieren und `.../rain_raw_limit` beobachten
-9. Dienst sauber stoppen und prüfen, dass **kein KLF-Reboot** ausgelöst wird
-10. Optional Recovery-Topic mit externer Steckdose / Loxone testen
+9. Bridge weiterlaufen lassen und prüfen, dass bei normalen KLF-Updates keine Event-Monitor-Warnung erscheint
+10. Optional `event_stale_warn_seconds` testweise reduzieren und die Warnung im Log prüfen
+11. Dienst sauber stoppen und prüfen, dass **kein KLF-Reboot** ausgelöst wird
+12. Optional Recovery-Topic mit externer Steckdose / Loxone testen
 
 [Zurück zum Inhalt](#inhalt)
 
