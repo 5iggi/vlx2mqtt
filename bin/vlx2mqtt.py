@@ -81,10 +81,10 @@ def apply_pyvlx_patch():
 
 
 # ============================================================
-# Konfiguration
+# Configuration
 # ============================================================
 DEFAULT_CFG = {
-    "klf_host": "VELUX-KLF-DE3B.fritz.box",
+    "klf_host": "VELUX-KLF.fritz.box",
     "klf_pw": "",
     "mqtt_host": "127.0.0.1",
     "mqtt_port": 1883,
@@ -106,6 +106,8 @@ DEFAULT_CFG = {
     "topic_identifier": "name",
     "rain_poll_interval": 300,
     "publish_rain_raw_limit": False,
+    "event_monitor_interval": 60,
+    "event_stale_warn_seconds": 900,
 }
 
 LOGFORMAT = "%(asctime)-15s %(levelname)s %(message)s"
@@ -177,6 +179,12 @@ def load_cfg_file(path: str) -> dict:
         sec.get("publish_rain_raw_limit", fallback=str(cfg["publish_rain_raw_limit"])),
         default=cfg["publish_rain_raw_limit"],
     )
+    cfg["event_monitor_interval"] = sec.getint(
+        "event_monitor_interval", fallback=cfg["event_monitor_interval"]
+    )
+    cfg["event_stale_warn_seconds"] = sec.getint(
+        "event_stale_warn_seconds", fallback=cfg["event_stale_warn_seconds"]
+    )
 
     return cfg
 
@@ -186,7 +194,7 @@ CFG = load_cfg_file(CFG_PATH)
 LOGFILE = CFG["logfile"]
 
 # ============================================================
-# Hilfsfunktionen
+# Help functions
 # ============================================================
 
 def normalize_from_device(raw: Any) -> Optional[int]:
@@ -199,11 +207,11 @@ def normalize_from_device(raw: Any) -> Optional[int]:
     except Exception:
         return None
 
-    # bekannter Ghost-Rohwert -> unterdrücken
+    # Known ghost raw value -> suppress
     if v == 124:
         return None
 
-    # Velux liefert oft 0..200
+    # Velux often delivers 0..200
     if v > 100:
         v = int(v / 2)
 
@@ -282,7 +290,6 @@ def get_state(node) -> str:
 def parse_state_code(node) -> Optional[int]:
     """
     Read numeric KLF state (e.g. 2/3/4/5) from the node.
-    Handle different pyvlx representations.
     """
     candidates = [
         getattr(node, "last_frame_state", None),
@@ -519,17 +526,6 @@ def find_node_by_identifier(identifier: str):
 async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
     """
     Determine rain status indirectly via the opening limit.
-
-    Supports both newer pyvlx APIs:
-      - await node.get_limitation_min()
-      - await node.get_limitation()
-
-    Heuristic (as used in Home Assistant):
-      limitation_min >= 89 => rain detected
-
-    Option 2 hardening:
-      - short retry on transient "Unable to send command"
-      - skip aggressive ERROR spam for single transient read failures
     """
     node_name = getattr(node, "name", "")
 
@@ -687,7 +683,7 @@ apply_pyvlx_patch()
 logging.info("Starting vlx2mqtt_rebuild")
 
 # ============================================================
-# Globale Laufzeitdaten
+# Global runtime data
 # ============================================================
 mqtt_connected = False
 PUBLISH_QUEUE = []
@@ -732,11 +728,9 @@ def mqtt_publish(topic: str, payload: Any, qos: int = 1, retain: bool = True):
             if CFG.get("verbose", False):
                 logging.debug("mqtt_publish sent topic=%s payload=%s", topic, payload_str)
         else:
-            # Für retained Topics immer nur den letzten Wert pro Topic in der Queue behalten
             if retain:
                 PUBLISH_QUEUE = [item for item in PUBLISH_QUEUE if item[0] != topic]
 
-            # Sicherheitslimit
             if len(PUBLISH_QUEUE) > 200:
                 PUBLISH_QUEUE.pop(0)
 
@@ -762,7 +756,7 @@ def mqtt_publish(topic: str, payload: Any, qos: int = 1, retain: bool = True):
 
 def classify_klf_error(exc: Exception) -> tuple[str, str]:
     """
-    KLF-Verbindungs-/Authentifizierungsfehlern ein klaren Status.
+    Assign a clear status to KLF connection/authentication errors.
         (klf_state, klf_error_text)
     """
     txt = ""
@@ -791,7 +785,6 @@ def classify_klf_error(exc: Exception) -> tuple[str, str]:
 
     txt_u = txt.upper()
 
-    # Passwort / Auth fehlgeschlagen
     if (
         "FAILED TO AUTHENTICATE" in txt_u
         or "AUTHENTICATE" in txt_u
@@ -803,7 +796,6 @@ def classify_klf_error(exc: Exception) -> tuple[str, str]:
     ):
         return "klf_auth_failed", txt
 
-    # Host erreichbar, Port lehnt aktiv ab
     if (
         "ERRNO 111" in txt_u
         or "CONNECTION REFUSED" in txt_u
@@ -811,7 +803,6 @@ def classify_klf_error(exc: Exception) -> tuple[str, str]:
     ):
         return "klf_connection_refused", txt
 
-    # Timeout / nicht erreichbar / DNS / Netzwerk
     if (
         "TIMED OUT" in txt_u
         or "ETIMEDOUT" in txt_u
@@ -827,7 +818,7 @@ def classify_klf_error(exc: Exception) -> tuple[str, str]:
 
 
 def mqtt_publish_if_changed(topic: str, payload: Any, qos: int = 1, retain: bool = True):
-    """Publiziert nur bei Wertänderung."""
+    """Published only when a value changes."""
     global LAST_PUBLISHED
     payload_str = "" if payload is None else str(payload)
     if LAST_PUBLISHED.get(topic) == payload_str:
@@ -837,7 +828,7 @@ def mqtt_publish_if_changed(topic: str, payload: Any, qos: int = 1, retain: bool
 
 
 def compute_status_detail() -> str:
-    """Stabiler Detailstatus für Loxone / Diagnose."""
+    """Stable Detail Status for Loxone / Diagnostics."""
     if SERVICE_STATE != "running":
         return f"service_{SERVICE_STATE}"
     return KLF_STATE
@@ -845,7 +836,7 @@ def compute_status_detail() -> str:
 
 def compute_overall_status() -> str:
     """
-    Einfacher Loxone-Status: ok / error
+    Simple Loxone status: ok / error
     """
     if SERVICE_STATE == "stopped":
         return "ok"
@@ -858,8 +849,7 @@ def compute_overall_status() -> str:
 
 def submit_coro_from_thread(coro, description: str = ""):
     """
-    Plant eine Coroutine thread-sicher auf dem main asyncio loop ein.
-    Wird z. B. aus MQTT-Callbacks (Paho-Thread) verwendet.
+    Schedules a coroutine thread-safely on the main asyncio loop.
     """
     global MAIN_LOOP
 
@@ -878,12 +868,10 @@ def submit_coro_from_thread(coro, description: str = ""):
 
     def _parse_description(desc: str):
         """
-        Zerlegt Beschreibungen wie:
-          open:Fenster_links
-          close:Fenster_rechts
-          stop:Fenster_links
-          finalize_stop:Fenster_links
-        in (cmd, label).
+        Parses descriptions like:
+          open:Window_left; close:Window_right;
+          stop:Window_left; finalize_stop:Window_left
+        into (cmd, label).
         """
         txt = str(desc or "").strip()
         if ":" not in txt:
@@ -894,7 +882,7 @@ def submit_coro_from_thread(coro, description: str = ""):
 
     def _compact_error_from_description(desc: str) -> str:
         """
-        Wandelt interne Beschreibungen in kompakte Logtexte für verbose=0 um.
+        Converts internal descriptions into concise log texts for `verbose=0`.
         """
         cmd, label = _parse_description(desc)
 
@@ -911,7 +899,7 @@ def submit_coro_from_thread(coro, description: str = ""):
 
     def _compact_success_from_description(desc: str) -> Optional[str]:
         """
-        Liefert für einfache Betriebslogs eine kompakte Erfolgszeile zurück.
+        Returns a compact success message for simple operation logs.
         """
         cmd, label = _parse_description(desc)
 
@@ -969,12 +957,12 @@ def publish_service_status():
 
 def publish_bridge_status():
     """
-    Publiziert:
-      - status         -> ok / error (für Loxone)
-      - status_detail  -> stabiler Detailstatus
-      - status_live    -> aktueller KLF-Livezustand (inkl. klf_connecting)
-      - error_text     -> letzter lesbarer Fehlertext
-      - health         -> ausführliches JSON
+    Published:
+      - status         -> ok / error (for Loxone)
+      - status_detail  -> stable detailed status
+      - status_live    -> current KLF live status (including klf_connecting)
+      - error_text     -> last readable error message
+      - health         -> detailed JSON
     """
     try:
         overall_status = compute_overall_status()
@@ -1037,7 +1025,7 @@ def publish_bridge_status():
 
 def publish_recovery_status():
     """
-    Publiziert den Status für eine externe Recovery (z. B. Loxone + schaltbare Steckdose).
+    Publishes the status for an external recovery (e.g., Loxone + smart plug).
     """
     try:
         mqtt_publish_if_changed(
@@ -1070,8 +1058,7 @@ def publish_recovery_status():
 
 def publish_node_metadata():
     """
-    Publiziert Zuordnung name <-> node_id als retained Topics.
-    Hilfreich für Loxone / Debugging.
+    Publishes the name <-> node_id mapping as retained topics for debugging.
     """
     try:
         for node in getattr(pyvlx, "nodes", []):
@@ -1111,7 +1098,7 @@ def publish_node_metadata():
 
 def request_external_recovery(reason: str):
     """
-    Fordert eine externe Recovery an (typisch: Loxone schaltet Steckdose aus/ein).
+    Requests an external recovery (typically: Loxone turns the smart plug off/on).
     """
     global RECOVERY_REQUESTED, RECOVERY_REASON, LAST_EXTERNAL_RECOVERY_TS, WAIT_UNTIL_AFTER_RECOVERY, SERVICE_DETAIL
 
@@ -1129,7 +1116,7 @@ def request_external_recovery(reason: str):
 
 def clear_external_recovery():
     """
-    Setzt den externen Recovery-Status zurück.
+    Resets the external recovery status.
     """
     global RECOVERY_REQUESTED, RECOVERY_REASON, WAIT_UNTIL_AFTER_RECOVERY
     RECOVERY_REQUESTED = False
@@ -1589,7 +1576,7 @@ async def poll_rain_sensors_once():
 
 async def poll_rain_sensors():
     """
-    Pollt den indirekten Regenstatus nur für Fensternodes mit Regensensor.
+    Poll indirect rain status only for window nodes with a rain sensor.
     """
     interval = max(60, int(float(CFG.get("rain_poll_interval", 300))))
 
@@ -1603,7 +1590,7 @@ async def poll_rain_sensors():
 
 
 # ============================================================
-# Hintergrundtasks
+# Background tasks
 # ============================================================
 
 async def publish_initial_snapshot():
@@ -1703,7 +1690,7 @@ async def moving_watchdog():
 
 async def finalize_stop_after_delay(node, stkey: str, delay: float = 1.5, confirm_gap: float = 0.5):
     """
-    Robuster STOP-Finalizer
+    Robust STOP Finalizer
     """
     try:
         await asyncio.sleep(delay)
@@ -1811,7 +1798,7 @@ async def on_node_update(node):
         if run_status:
             st["last_run_status"] = run_status
 
-        # StatusReply beobachten (z. B. STOP / OVERRULED)
+        # Check StatusReply (e.g., STOP / OVERRULED)
         is_overruled = False
         last_reply_str = ""
 
@@ -2021,7 +2008,7 @@ async def on_node_update(node):
 
 
 # ============================================================
-# Befehle
+# Commands
 # ============================================================
 async def safe_set_position(device, value: int, name: str, st: dict):
     node_label = st.get("topic_id") or name
@@ -2092,6 +2079,70 @@ async def safe_set_position(device, value: int, name: str, st: dict):
     return False
 
 
+def _latest_node_update_age() -> Optional[float]:
+    """
+    Age in seconds of the newest node update we have seen from the KLF.
+    Returns None if no node update has been observed yet.
+    """
+    latest = None
+    now = time.time()
+
+    for st in NODE_STATE.values():
+        ts = st.get("last_update_ts")
+        if not ts:
+            continue
+        latest = ts if latest is None else max(latest, ts)
+
+    if latest is None:
+        return None
+    return max(0.0, now - latest)
+
+
+async def event_stale_monitor_task():
+    """
+    Diagnostic-only monitor for the event-driven KLF update path.
+
+    This does NOT poll node positions. It only warns if we have not received any
+    node update event for a long time while the bridge is otherwise connected.
+    Useful to detect a KLF that is connected but stopped delivering updates.
+    """
+    interval = max(30, int(float(CFG.get("event_monitor_interval", 60))))
+    threshold = max(interval * 2, int(float(CFG.get("event_stale_warn_seconds", 900))))
+    warned = False
+
+    while True:
+        try:
+            await asyncio.sleep(interval)
+
+            if KLF_STATE != "klf_connected":
+                warned = False
+                continue
+
+            if any_node_moving():
+                warned = False
+                continue
+
+            age = _latest_node_update_age()
+            if age is None:
+                continue
+
+            if age >= threshold:
+                if not warned:
+                    logging.warning(
+                        "event monitor: no node update received from KLF for %.0fs (threshold=%ss); positions may be stale",
+                        age,
+                        threshold,
+                    )
+                    warned = True
+            else:
+                warned = False
+
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logging.exception("event_stale_monitor_task failed")
+
+
 async def preventive_recovery_task():
     """
     Optional preventive recovery request every X hours.
@@ -2155,6 +2206,10 @@ async def main():
         logging.debug("KLF host: %s", CFG["klf_host"])
         logging.debug("MQTT broker: %s:%s", CFG["mqtt_host"], CFG["mqtt_port"])
         logging.debug("Topic identifier mode: %s", get_topic_identifier_mode())
+        logging.debug(
+            "Status mode: positions via KLF events, rain via polling every %ss",
+            max(60, int(float(CFG.get("rain_poll_interval", 300)))),
+        )
 
         mqttc.loop_start()
         try:
@@ -2179,7 +2234,7 @@ async def main():
         publish_service_status()
         clear_external_recovery()
 
-        # Nodes vorbereiten / überwachen
+        # prepare / monitoring nodes
         for node in pyvlx.nodes:
             if not isinstance(node, OpeningDevice):
                 continue
@@ -2232,6 +2287,7 @@ async def main():
             asyncio.create_task(moving_watchdog()),
             asyncio.create_task(poll_rain_sensors()),
             asyncio.create_task(preventive_recovery_task()),
+            asyncio.create_task(event_stale_monitor_task()),
         ]
 
         # Main loop: wait until stop is requested
