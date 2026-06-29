@@ -685,6 +685,15 @@ def setup_logging() -> None:
 
     logging.info("Using config file: %s", CFG_PATH)
     logging.info("Verbose logging: %s", "on" if CFG.get("verbose", False) else "off")
+    logging.info(
+        "External recovery config: enabled=%s threshold=%s cooldown=%.0fs grace=%.0fs topic=%s trigger_states=%s",
+        _cfg_bool(CFG.get("external_recovery_enabled", False), False),
+        CFG.get("external_recovery_threshold"),
+        float(CFG.get("external_recovery_cooldown", 0)),
+        float(CFG.get("external_recovery_grace", 0)),
+        CFG.get("external_recovery_topic"),
+        ("klf_connection_refused", "klf_disconnected", "klf_unreachable"),
+    )
 
 
 setup_logging()
@@ -705,6 +714,13 @@ KLF_STATE = "starting"
 SERVICE_STATE = "starting"
 SERVICE_DETAIL = None
 KLF_REFUSED_COUNT = 0
+# Recovery trigger states: count repeated KLF API failures that may be fixed by a power cycle.
+# Kept as KLF_REFUSED_COUNT for MQTT/backward compatibility.
+KLF_RECOVERY_TRIGGER_STATES = (
+    "klf_connection_refused",
+    "klf_disconnected",
+    "klf_unreachable",
+)
 LAST_EXTERNAL_RECOVERY_TS = None
 WAIT_UNTIL_AFTER_RECOVERY = None
 RECOVERY_REQUESTED = False
@@ -1118,6 +1134,13 @@ def request_external_recovery(reason: str):
     WAIT_UNTIL_AFTER_RECOVERY = now + float(CFG["external_recovery_grace"])
 
     SERVICE_DETAIL = f"external recovery requested: {reason}"
+    logging.warning(
+        "External recovery requested: topic=%s payload=true reason=%s grace=%.0fs mqtt_connected=%s",
+        CFG["external_recovery_topic"],
+        reason,
+        float(CFG["external_recovery_grace"]),
+        mqtt_connected,
+    )
     publish_service_status()
     publish_bridge_status()
     publish_recovery_status()
@@ -1379,26 +1402,21 @@ mqttc.on_disconnect = mqtt_on_disconnect
 # ============================================================
 
 async def _await_if_needed(result, timeout: float = 3.0):
-    """Await coroutine-like return values, ignore normal values."""
     if hasattr(result, "__await__"):
         return await asyncio.wait_for(result, timeout=timeout)
     return result
 
 
 async def _call_optional_method(obj, method_name: str, *args, timeout: float = 3.0, **kwargs):
-    """Call an optional method defensively and await it if needed."""
     if obj is None:
         return False
-
     method = getattr(obj, method_name, None)
     if not callable(method):
         return False
-
     try:
         try:
             result = method(*args, **kwargs)
         except TypeError:
-            # Some pyvlx versions do not support keyword arguments like notify_callbacks.
             result = method()
         await _await_if_needed(result, timeout=timeout)
         return True
@@ -1408,26 +1426,18 @@ async def _call_optional_method(obj, method_name: str, *args, timeout: float = 3
 
 
 async def cancel_pyvlx_heartbeat_tasks(reason: str = "") -> None:
-    """Cancel orphaned pyvlx heartbeat tasks created during failed connects."""
     current = asyncio.current_task()
     tasks_to_cancel = []
-
     for task in asyncio.all_tasks():
         if task is current or task.done():
             continue
-
         try:
             coro = task.get_coro()
-            qualname = getattr(coro, "__qualname__", "")
-            if not qualname:
-                code = getattr(coro, "cr_code", None)
-                qualname = getattr(code, "co_qualname", "")
+            qualname = getattr(coro, "__qualname__", "") or getattr(getattr(coro, "cr_code", None), "co_qualname", "")
         except Exception:
             qualname = ""
-
         if "Heartbeat.loop" in str(qualname):
             tasks_to_cancel.append(task)
-
     if tasks_to_cancel:
         logging.debug(
             "pyvlx cleanup: cancelling %d heartbeat task(s)%s",
@@ -1440,29 +1450,22 @@ async def cancel_pyvlx_heartbeat_tasks(reason: str = "") -> None:
 
 
 async def cleanup_pyvlx_instance(instance, reason: str = "") -> None:
-    """Best-effort cleanup of a pyvlx instance after failed connect or shutdown."""
+    """Best-effort cleanup after failed KLF connect without active API calls."""
     if instance is None:
         await cancel_pyvlx_heartbeat_tasks(reason)
         return
-
     logging.debug("pyvlx cleanup: start%s", f" ({reason})" if reason else "")
-
-    # Prefer the existing low-level connection disconnect used by this plugin.
     conn = getattr(instance, "connection", None)
-    await _call_optional_method(conn, "disconnect", notify_callbacks=False)
 
-    # Also try public/alternative close methods if they exist in the installed pyvlx version.
-    await _call_optional_method(instance, "disconnect")
-    await _call_optional_method(instance, "close")
+    # Important: do not call PyVLX.disconnect() here, because it may try to send
+    # GW_HOUSE_STATUS_MONITOR_DISABLE_REQ and can create another hanging connect.
+    await _call_optional_method(conn, "disconnect", notify_callbacks=False)
     await _call_optional_method(conn, "close")
 
-    # Close a remaining transport directly, if pyvlx left one behind.
     try:
         transport = getattr(conn, "transport", None)
-        if transport is not None:
-            close = getattr(transport, "close", None)
-            if callable(close):
-                close()
+        if transport is not None and callable(getattr(transport, "close", None)):
+            transport.close()
     except Exception:
         logging.debug("pyvlx cleanup: transport close failed", exc_info=True)
 
@@ -1545,25 +1548,55 @@ async def connect_pyvlx(stop_event: asyncio.Event):
             KLF_STATE = klf_state
             LAST_KLF_ERROR = err_text
             
-            if klf_state == "klf_connection_refused":
+            if klf_state in KLF_RECOVERY_TRIGGER_STATES:
                 KLF_REFUSED_COUNT += 1
             else:
                 KLF_REFUSED_COUNT = 0
 
             publish_recovery_status()
 
-            if CFG.get("external_recovery_enabled", False):
-                if klf_state == "klf_connection_refused" and KLF_REFUSED_COUNT >= int(CFG["external_recovery_threshold"]):
-                    cooldown_ok = (
-                        LAST_EXTERNAL_RECOVERY_TS is None
-                        or (time.time() - LAST_EXTERNAL_RECOVERY_TS) >= float(CFG["external_recovery_cooldown"])
-                    )
-                    if cooldown_ok and not RECOVERY_REQUESTED:
+            recovery_enabled = _cfg_bool(CFG.get("external_recovery_enabled", False), False)
+            recovery_threshold = int(CFG["external_recovery_threshold"])
+
+            if klf_state in KLF_RECOVERY_TRIGGER_STATES and KLF_REFUSED_COUNT >= recovery_threshold:
+                cooldown_ok = (
+                    LAST_EXTERNAL_RECOVERY_TS is None
+                    or (time.time() - LAST_EXTERNAL_RECOVERY_TS) >= float(CFG["external_recovery_cooldown"])
+                )
+                if not recovery_enabled:
+                    if KLF_REFUSED_COUNT == recovery_threshold:
                         logging.warning(
-                            "Requesting external recovery after %d refused connections",
+                            "Recovery threshold reached but external recovery is disabled: count=%d threshold=%d last=%s topic=%s",
                             KLF_REFUSED_COUNT,
+                            recovery_threshold,
+                            klf_state,
+                            CFG["external_recovery_topic"],
                         )
-                        request_external_recovery("klf_connection_refused")
+                elif not cooldown_ok:
+                    if CFG.get("verbose", False):
+                        logging.debug(
+                            "External recovery threshold reached but cooldown is active: count=%d threshold=%d last=%s cooldown=%.0fs",
+                            KLF_REFUSED_COUNT,
+                            recovery_threshold,
+                            klf_state,
+                            float(CFG["external_recovery_cooldown"]),
+                        )
+                elif RECOVERY_REQUESTED:
+                    if CFG.get("verbose", False):
+                        logging.debug(
+                            "External recovery already requested: count=%d threshold=%d last=%s reason=%s",
+                            KLF_REFUSED_COUNT,
+                            recovery_threshold,
+                            klf_state,
+                            RECOVERY_REASON,
+                        )
+                else:
+                    logging.warning(
+                        "Requesting external recovery after %d KLF connection failures (last=%s)",
+                        KLF_REFUSED_COUNT,
+                        klf_state,
+                    )
+                    request_external_recovery(klf_state)
 
             wait_s = min(backoff, CFG["backoff_max"])
             KLF_RECONNECT_IN = wait_s

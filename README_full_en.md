@@ -78,8 +78,10 @@ The plugin connects directly to the KLF200, reads positions and states from wind
   - `node_id`
 - Optionally publishes a rain status for supported windows via MQTT
 - Optional external **recovery / power-cycle trigger** in case of KLF connection problems
+- More robust recovery trigger for `klf_connection_refused`, `klf_disconnected`, and `klf_unreachable`
 - Optional **preventive recovery trigger** after a configurable uptime
 - Startup snapshot for position and `moving`
+- LoxBerry-compatible log tags (`<INFO>`, `<OK>`, `<WARNING>`, `<ERROR>`, `<DEBUG>`)
 - Helpful compact logging when `verbose = 0`
 
 [Back to contents](#contents)
@@ -157,6 +159,8 @@ logfile = /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 topic_identifier = name
 rain_poll_interval = 300
 publish_rain_raw_limit = false
+event_monitor_interval = 60
+event_stale_warn_seconds = 900
 
 external_recovery_enabled = false
 external_recovery_threshold = 4
@@ -367,12 +371,41 @@ Depending on the `pyvlx` version or node representation used, the required infor
 
 ## Recovery / power cycle
 
-In the event of repeated error states such as `klf_connection_refused`, the plugin can optionally publish an external recovery / power-cycle trigger via MQTT.
+In case of repeated KLF connection problems, the plugin can optionally publish an external recovery / power-cycle trigger via MQTT.
+
+This release counts the following KLF error states as recovery-relevant:
+
+- `klf_connection_refused`
+- `klf_disconnected`
+- `klf_unreachable`
+
+If `external_recovery_enabled = true` is set and the number of relevant failures reaches `external_recovery_threshold`, VLX2MQTT publishes:
+
+```text
+<root_topic>/recovery/powercycle_required = true
+<root_topic>/recovery/reason = <klf_state>
+<root_topic>/recovery/failure_count = <count>
+<root_topic>/recovery/state = requested
+```
+
+A clearly visible log line is written as well, so that the trigger can be understood even in normal logging mode:
+
+```text
+External recovery requested: topic=vlx2mqtt/recovery/powercycle_required payload=true reason=<klf_state> grace=<seconds>s mqtt_connected=<true|false>
+```
+
+On startup, the plugin also logs the loaded recovery configuration, for example:
+
+```text
+External recovery config: enabled=True threshold=4 cooldown=1800s grace=120s topic=vlx2mqtt/recovery/powercycle_required trigger_states=('klf_connection_refused', 'klf_disconnected', 'klf_unreachable')
+```
 
 ### Recommendation
 
 - **do not reboot** the KLF on a normal service stop
 - use external recovery only for real connection problems
+- keep `external_recovery_cooldown` high enough to avoid recovery loops
+- wait for the configured grace period (`external_recovery_grace`) after a recovery
 - configure preventive recovery consciously and conservatively
 
 ### Why is there a preventive recovery trigger?
@@ -380,8 +413,6 @@ In the event of repeated error states such as `klf_connection_refused`, the plug
 In practice, the KLF200 is not always stable over long periods of time when many or repeated connection attempts occur. For this reason, VLX2MQTT optionally supports a **preventive recovery trigger**.
 
 [Back to contents](#contents)
-
----
 
 ## Logging
 
@@ -396,6 +427,26 @@ Log file:
 - `verbose = 1` → detailed debug logging
 - `verbose = 0` → reduced logging for production use
 
+### LoxBerry log tags
+
+The log output is formatted for the LoxBerry Log Manager and uses tags such as:
+
+```text
+<INFO>
+<OK>
+<WARNING>
+<ERROR>
+<DEBUG>
+```
+
+Examples:
+
+```text
+<OK> Applied pyvlx payload patch
+<OK> MQTT connected rc=0
+<WARNING> External recovery requested: topic=vlx2mqtt/recovery/powercycle_required payload=true reason=klf_unreachable grace=120s mqtt_connected=True
+```
+
 ### Examples for compact logging (`verbose = 0`)
 
 ```text
@@ -404,8 +455,6 @@ Window_right rain: true (raw_limit=100)
 ```
 
 [Back to contents](#contents)
-
----
 
 ## Files and directories
 
@@ -439,6 +488,7 @@ The plugin contains a LoxBerry web interface for configuring:
 - rain polling (`rain_poll_interval`)
 - optional `rain_raw_limit`
 - recovery / power-cycle settings
+- event monitoring (`event_monitor_interval`, `event_stale_warn_seconds`)
 
 In addition, service functions such as **Restart**, **Stop**, and **Show log** are integrated.
 
@@ -536,6 +586,7 @@ gettopic
 - Internal KLF timestamps in received frames may differ from the real system time.
 - Rain polling depends on `pyvlx` / node support.
 - `rain` and `rain_raw_limit` are published only for supported window nodes.
+- KLF StatusReply / RunStatus frames do not necessarily provide a clear error response in all lockout or conflict situations; v0.6.0 does not derive additional control logic from them.
 
 [Back to contents](#contents)
 
@@ -555,6 +606,7 @@ gettopic
 10. Optionally reduce `event_stale_warn_seconds` temporarily for a diagnostics test and verify the warning in the log
 11. Stop the service cleanly and verify that **no KLF reboot** is triggered
 12. Optionally test the recovery topic with an external smart plug / Loxone
+13. Optionally simulate a KLF connection error and verify that `klf_connection_refused`, `klf_disconnected`, or `klf_unreachable` triggers `powercycle_required=true` after the threshold
 
 [Back to contents](#contents)
 

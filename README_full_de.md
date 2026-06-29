@@ -76,8 +76,10 @@ Das Plugin verbindet sich direkt mit der KLF200, liest Positionen und Zustände 
   - `node_id`
 - Veröffentlicht optional einen Regenstatus für unterstützte Fenster per MQTT
 - Optionaler externer **Recovery-/Power-Cycle-Trigger** bei KLF-Verbindungsproblemen
+- Robusterer Recovery-Trigger für `klf_connection_refused`, `klf_disconnected` und `klf_unreachable`
 - Optionaler **präventiver Recovery-Trigger** nach konfigurierbarer Laufzeit
 - Startup-Snapshot für Position und `moving`
+- LoxBerry-kompatible Logtags (`<INFO>`, `<OK>`, `<WARNING>`, `<ERROR>`, `<DEBUG>`)
 - Aussagekräftiges kompakteres Logging bei `verbose = 0`
 
 [Zurück zum Inhalt](#inhalt)
@@ -155,6 +157,8 @@ logfile = /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 topic_identifier = name
 rain_poll_interval = 300
 publish_rain_raw_limit = false
+event_monitor_interval = 60
+event_stale_warn_seconds = 900
 
 external_recovery_enabled = false
 external_recovery_threshold = 4
@@ -365,12 +369,41 @@ Je nach verwendeter `pyvlx`-Version bzw. Node-Repräsentation stehen die dafür 
 
 ## Recovery / Power-Cycle
 
-Bei wiederholten Fehlerzuständen wie z. B. `klf_connection_refused` kann das Plugin optional einen externen Recovery-/Power-Cycle-Trigger per MQTT veröffentlichen.
+Bei wiederholten KLF-Verbindungsproblemen kann das Plugin optional einen externen Recovery-/Power-Cycle-Trigger per MQTT veröffentlichen.
+
+Der Recovery-Zähler berücksichtigt in diesem Release folgende KLF-Fehlerzustände:
+
+- `klf_connection_refused`
+- `klf_disconnected`
+- `klf_unreachable`
+
+Wenn `external_recovery_enabled = true` gesetzt ist und die Anzahl der relevanten Fehler `external_recovery_threshold` erreicht, publiziert VLX2MQTT:
+
+```text
+<root_topic>/recovery/powercycle_required = true
+<root_topic>/recovery/reason = <klf_state>
+<root_topic>/recovery/failure_count = <count>
+<root_topic>/recovery/state = requested
+```
+
+Zusätzlich wird eine gut sichtbare Logzeile geschrieben, damit der Auslöser auch im normalen Logmodus nachvollziehbar ist:
+
+```text
+External recovery requested: topic=vlx2mqtt/recovery/powercycle_required payload=true reason=<klf_state> grace=<seconds>s mqtt_connected=<true|false>
+```
+
+Beim Start protokolliert das Plugin außerdem die gelesene Recovery-Konfiguration, zum Beispiel:
+
+```text
+External recovery config: enabled=True threshold=4 cooldown=1800s grace=120s topic=vlx2mqtt/recovery/powercycle_required trigger_states=('klf_connection_refused', 'klf_disconnected', 'klf_unreachable')
+```
 
 ### Empfehlung
 
 - **kein Reboot beim normalen Stop** des Dienstes
 - externe Recovery nur bei echten Verbindungsproblemen nutzen
+- `external_recovery_cooldown` ausreichend groß wählen, um Recovery-Schleifen zu vermeiden
+- nach einer Recovery die konfigurierte Grace-Zeit (`external_recovery_grace`) abwarten
 - präventive Recovery bewusst und konservativ konfigurieren
 
 ### Warum gibt es einen präventiven Recovery-Trigger?
@@ -378,8 +411,6 @@ Bei wiederholten Fehlerzuständen wie z. B. `klf_connection_refused` kann das Pl
 Die KLF200 ist in der Praxis nicht immer dauerhaft stabil, wenn viele oder wiederholte Verbindungsaufbauten stattfinden. Aus diesem Grund unterstützt VLX2MQTT optional einen **präventiven Recovery-Trigger**.
 
 [Zurück zum Inhalt](#inhalt)
-
----
 
 ## Logging
 
@@ -394,6 +425,26 @@ Logdatei:
 - `verbose = 1` → ausführliches Debug-Logging
 - `verbose = 0` → reduziertes Logging für den produktiven Betrieb
 
+### LoxBerry-Logtags
+
+Die Logausgabe ist für den LoxBerry Log Manager formatiert und verwendet Tags wie:
+
+```text
+<INFO>
+<OK>
+<WARNING>
+<ERROR>
+<DEBUG>
+```
+
+Beispiele:
+
+```text
+<OK> Applied pyvlx payload patch
+<OK> MQTT connected rc=0
+<WARNING> External recovery requested: topic=vlx2mqtt/recovery/powercycle_required payload=true reason=klf_unreachable grace=120s mqtt_connected=True
+```
+
 ### Beispiele für kompaktes Logging (`verbose = 0`)
 
 ```text
@@ -402,8 +453,6 @@ Fenster_rechts rain: true (raw_limit=100)
 ```
 
 [Zurück zum Inhalt](#inhalt)
-
----
 
 ## Dateien und Verzeichnisse
 
@@ -437,6 +486,7 @@ Das Plugin enthält eine LoxBerry-Weboberfläche zur Konfiguration von:
 - Regen-Polling (`rain_poll_interval`)
 - optionalem `rain_raw_limit`
 - Recovery-/Power-Cycle-Einstellungen
+- Event-Monitoring (`event_monitor_interval`, `event_stale_warn_seconds`)
 
 Zusätzlich sind Servicefunktionen wie **Restart**, **Stop** und **Log anzeigen** integriert.
 
@@ -534,6 +584,7 @@ gettopic
 - KLF-interne Zeitstempel in empfangenen Frames können von der realen Systemzeit abweichen.
 - Rain-Polling ist abhängig von der `pyvlx`-/Node-Unterstützung.
 - `rain` und `rain_raw_limit` werden nur für unterstützte Fensternodes veröffentlicht.
+- KLF-StatusReply-/RunStatus-Frames liefern in bestimmten Sperr- oder Konfliktfällen nicht zwingend eine eindeutige Fehlerantwort; in v0.6.0 wird daraus keine eigene Steuerlogik abgeleitet.
 
 [Zurück zum Inhalt](#inhalt)
 
@@ -553,6 +604,7 @@ gettopic
 10. Optional `event_stale_warn_seconds` testweise reduzieren und die Warnung im Log prüfen
 11. Dienst sauber stoppen und prüfen, dass **kein KLF-Reboot** ausgelöst wird
 12. Optional Recovery-Topic mit externer Steckdose / Loxone testen
+13. Optional einen KLF-Verbindungsfehler simulieren und prüfen, ob `klf_connection_refused`, `klf_disconnected` oder `klf_unreachable` nach dem Threshold `powercycle_required=true` auslösen
 
 [Zurück zum Inhalt](#inhalt)
 
