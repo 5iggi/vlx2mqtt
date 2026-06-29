@@ -74,7 +74,7 @@ def apply_pyvlx_patch():
             return bytes(ret)
 
         FrameCommandSendRequest.get_payload = patched_get_payload
-        logging.info("Applied pyvlx payload patch")
+        logging.ok("Applied pyvlx payload patch")
     except Exception:
         logging.exception("Failed to apply pyvlx patch")
 
@@ -110,7 +110,16 @@ DEFAULT_CFG = {
     "event_stale_warn_seconds": 900,
 }
 
-LOGFORMAT = "%(asctime)-15s %(levelname)s %(message)s"
+LOGFORMAT = "%(asctime)-15s <%(levelname)s> %(message)s"
+
+# LoxBerry Log Manager recognizes tags like <INFO>, <OK>, <WARNING>, <ERROR>.
+OK_LEVEL = 25
+logging.addLevelName(OK_LEVEL, "OK")
+
+def log_ok(message: str, *args, **kwargs) -> None:
+    logging.getLogger().log(OK_LEVEL, message, *args, **kwargs)
+
+setattr(logging, "ok", log_ok)
 
 
 def _cfg_bool(value, default=False):
@@ -1137,7 +1146,7 @@ def mqtt_on_connect(client, userdata, flags, rc, properties=None):
     mqtt_connected = (rc == 0)
 
     if mqtt_connected:
-        logging.info("MQTT connected rc=%s", rc)
+        logging.ok("MQTT connected rc=%s", rc)
         try:
             sub_topic = f"{CFG['root_topic']}/+/set"
             client.subscribe(sub_topic)
@@ -1366,6 +1375,103 @@ mqttc.on_publish = mqtt_on_publish
 mqttc.on_disconnect = mqtt_on_disconnect
 
 # ============================================================
+# KLF / pyvlx cleanup helpers
+# ============================================================
+
+async def _await_if_needed(result, timeout: float = 3.0):
+    """Await coroutine-like return values, ignore normal values."""
+    if hasattr(result, "__await__"):
+        return await asyncio.wait_for(result, timeout=timeout)
+    return result
+
+
+async def _call_optional_method(obj, method_name: str, *args, timeout: float = 3.0, **kwargs):
+    """Call an optional method defensively and await it if needed."""
+    if obj is None:
+        return False
+
+    method = getattr(obj, method_name, None)
+    if not callable(method):
+        return False
+
+    try:
+        try:
+            result = method(*args, **kwargs)
+        except TypeError:
+            # Some pyvlx versions do not support keyword arguments like notify_callbacks.
+            result = method()
+        await _await_if_needed(result, timeout=timeout)
+        return True
+    except Exception:
+        logging.debug("pyvlx cleanup: %s.%s failed", type(obj).__name__, method_name, exc_info=True)
+        return False
+
+
+async def cancel_pyvlx_heartbeat_tasks(reason: str = "") -> None:
+    """Cancel orphaned pyvlx heartbeat tasks created during failed connects."""
+    current = asyncio.current_task()
+    tasks_to_cancel = []
+
+    for task in asyncio.all_tasks():
+        if task is current or task.done():
+            continue
+
+        try:
+            coro = task.get_coro()
+            qualname = getattr(coro, "__qualname__", "")
+            if not qualname:
+                code = getattr(coro, "cr_code", None)
+                qualname = getattr(code, "co_qualname", "")
+        except Exception:
+            qualname = ""
+
+        if "Heartbeat.loop" in str(qualname):
+            tasks_to_cancel.append(task)
+
+    if tasks_to_cancel:
+        logging.debug(
+            "pyvlx cleanup: cancelling %d heartbeat task(s)%s",
+            len(tasks_to_cancel),
+            f" ({reason})" if reason else "",
+        )
+        for task in tasks_to_cancel:
+            task.cancel()
+        await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+
+
+async def cleanup_pyvlx_instance(instance, reason: str = "") -> None:
+    """Best-effort cleanup of a pyvlx instance after failed connect or shutdown."""
+    if instance is None:
+        await cancel_pyvlx_heartbeat_tasks(reason)
+        return
+
+    logging.debug("pyvlx cleanup: start%s", f" ({reason})" if reason else "")
+
+    # Prefer the existing low-level connection disconnect used by this plugin.
+    conn = getattr(instance, "connection", None)
+    await _call_optional_method(conn, "disconnect", notify_callbacks=False)
+
+    # Also try public/alternative close methods if they exist in the installed pyvlx version.
+    await _call_optional_method(instance, "disconnect")
+    await _call_optional_method(instance, "close")
+    await _call_optional_method(conn, "close")
+
+    # Close a remaining transport directly, if pyvlx left one behind.
+    try:
+        transport = getattr(conn, "transport", None)
+        if transport is not None:
+            close = getattr(transport, "close", None)
+            if callable(close):
+                close()
+    except Exception:
+        logging.debug("pyvlx cleanup: transport close failed", exc_info=True)
+
+    await cancel_pyvlx_heartbeat_tasks(reason)
+    await asyncio.sleep(0)
+    logging.debug("pyvlx cleanup: done%s", f" ({reason})" if reason else "")
+
+
+# ============================================================
 # KLF / pyvlx
 # ============================================================
 
@@ -1423,7 +1529,7 @@ async def connect_pyvlx(stop_event: asyncio.Event):
             SERVICE_STATE = "running"
             SERVICE_DETAIL = None
 
-            logging.info("pyvlx: nodes loaded %d", len(pyvlx.nodes))
+            logging.ok("pyvlx: nodes loaded %d", len(pyvlx.nodes))
             publish_service_status()
             publish_bridge_status()
             KLF_REFUSED_COUNT = 0
@@ -1431,7 +1537,9 @@ async def connect_pyvlx(stop_event: asyncio.Event):
             return True
 
         except Exception as e:
+            failed_pyvlx = pyvlx
             pyvlx = None
+            await cleanup_pyvlx_instance(failed_pyvlx, "connect failed")
 
             klf_state, err_text = classify_klf_error(e)
             KLF_STATE = klf_state
@@ -2323,19 +2431,10 @@ async def main():
 
         # Disconnect pyvlx cleanly without rebooting the gateway
         try:
-            if pyvlx is not None:
-                conn = getattr(pyvlx, "connection", None)
-                if conn is not None:
-                    disconnect = getattr(conn, "disconnect", None)
-                    if callable(disconnect):
-                        result = disconnect(notify_callbacks=False)
-                        if asyncio.iscoroutine(result):
-                            await result
-
-                pyvlx = None
-
+            await cleanup_pyvlx_instance(pyvlx, "shutdown")
+            pyvlx = None
         except Exception:
-            logging.debug("pyvlx connection disconnect during shutdown failed", exc_info=True)
+            logging.debug("pyvlx cleanup during shutdown failed", exc_info=True)
 
         try:
             KLF_STATE = "stopped"
