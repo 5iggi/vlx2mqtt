@@ -1081,6 +1081,197 @@ def publish_recovery_status():
         logging.exception("publish_recovery_status failed")
 
 
+
+# ============================================================
+# Numeric status codes for Loxone / MQTT gateways
+# ============================================================
+# Existing readable text topics are kept. The additional *_code topics are
+# intended for Loxone Config and other consumers that prefer numeric values.
+
+STATUS_CODE_MAP = {
+    "ok": 1,
+    "error": 0,
+}
+
+KLF_STATUS_CODE_MAP = {
+    "klf_connected": 1,
+    "klf_connecting": 2,
+    "klf_disconnected": 3,
+    "klf_unreachable": 4,
+    "klf_connection_refused": 5,
+    "klf_auth_failed": 6,
+    "klf_error": 7,
+    "starting": 8,
+    "unknown": 99,
+}
+
+SERVICE_STATUS_CODE_MAP = {
+    "running": 1,
+    "starting": 2,
+    "stopped": 0,
+    "lost": 0,
+    "error": 0,
+    "unknown": 99,
+    "service_running": 1,
+    "service_starting": 2,
+    "service_stopped": 0,
+    "service_lost": 0,
+    "service_error": 0,
+}
+
+RECOVERY_STATUS_CODE_MAP = {
+    "idle": 0,
+    "requested": 1,
+    "waiting": 2,
+}
+
+RECOVERY_REASON_CODE_MAP = {
+    "": 0,
+    "none": 0,
+    "klf_connected": 1,
+    "klf_connecting": 2,
+    "klf_disconnected": 3,
+    "klf_unreachable": 4,
+    "klf_connection_refused": 5,
+    "klf_auth_failed": 6,
+    "klf_error": 7,
+    "preventive_recovery": 10,
+    "unknown": 99,
+}
+
+
+def state_code(value: Any, mapping: dict, default: int = 99) -> int:
+    key = str(value or "").strip().lower()
+    return int(mapping.get(key, default))
+
+
+def mqtt_publish_state_with_code(topic: str, value: Any, mapping: dict, default: int = 99):
+    mqtt_publish_if_changed(topic, value, qos=1, retain=True)
+    mqtt_publish_if_changed(f"{topic}_code", state_code(value, mapping, default), qos=1, retain=True)
+
+
+# Override the original publisher functions with code-aware versions.
+def publish_service_status():
+    """Publish Python service state including numeric code topic."""
+    try:
+        mqtt_publish_state_with_code(
+            f"{CFG['root_topic']}/service_status",
+            SERVICE_STATE,
+            SERVICE_STATUS_CODE_MAP,
+            default=99,
+        )
+        mqtt_publish_if_changed(
+            f"{CFG['root_topic']}/service_detail",
+            "" if SERVICE_DETAIL is None else str(SERVICE_DETAIL),
+            qos=1,
+            retain=True,
+        )
+    except Exception:
+        logging.exception("publish_service_status failed")
+
+
+def publish_bridge_status():
+    """Publish bridge status including numeric *_code topics."""
+    try:
+        overall_status = compute_overall_status()
+        detail_status = compute_status_detail()
+        live_status = KLF_STATE
+        detail_map = {**KLF_STATUS_CODE_MAP, **SERVICE_STATUS_CODE_MAP}
+
+        mqtt_publish_state_with_code(
+            f"{CFG['root_topic']}/status",
+            overall_status,
+            STATUS_CODE_MAP,
+            default=0,
+        )
+        mqtt_publish_state_with_code(
+            f"{CFG['root_topic']}/status_detail",
+            detail_status,
+            detail_map,
+            default=99,
+        )
+        mqtt_publish_state_with_code(
+            f"{CFG['root_topic']}/status_live",
+            live_status,
+            KLF_STATUS_CODE_MAP,
+            default=99,
+        )
+
+        error_text = ""
+        if LAST_KLF_ERROR:
+            error_text = str(LAST_KLF_ERROR)
+        elif SERVICE_DETAIL:
+            error_text = str(SERVICE_DETAIL)
+        mqtt_publish_if_changed(
+            f"{CFG['root_topic']}/error_text",
+            error_text,
+            qos=1,
+            retain=True,
+        )
+
+        health = {
+            "status": overall_status,
+            "status_code": state_code(overall_status, STATUS_CODE_MAP, 0),
+            "status_detail": detail_status,
+            "status_detail_code": state_code(detail_status, detail_map, 99),
+            "status_live": live_status,
+            "status_live_code": state_code(live_status, KLF_STATUS_CODE_MAP, 99),
+            "service_state": SERVICE_STATE,
+            "service_status_code": state_code(SERVICE_STATE, SERVICE_STATUS_CODE_MAP, 99),
+            "service_detail": SERVICE_DETAIL,
+            "klf_state": KLF_STATE,
+            "last_klf_error": LAST_KLF_ERROR,
+            "last_klf_ok_ts": LAST_KLF_OK_TS,
+            "klf_reconnect_in": KLF_RECONNECT_IN,
+            "recovery_requested": RECOVERY_REQUESTED,
+            "recovery_reason": RECOVERY_REASON,
+            "recovery_reason_code": state_code(RECOVERY_REASON, RECOVERY_REASON_CODE_MAP, 0),
+            "failure_count": KLF_REFUSED_COUNT,
+        }
+        mqtt_publish_if_changed(
+            f"{CFG['root_topic']}/health",
+            json.dumps(health, sort_keys=True, default=str),
+            qos=1,
+            retain=True,
+        )
+    except Exception:
+        logging.exception("publish_bridge_status failed")
+
+
+def publish_recovery_status():
+    """Publish external recovery state including numeric code topics."""
+    try:
+        recovery_reason = "" if RECOVERY_REASON is None else str(RECOVERY_REASON)
+        recovery_state = "requested" if RECOVERY_REQUESTED else "idle"
+
+        mqtt_publish_if_changed(
+            CFG["external_recovery_topic"],
+            "true" if RECOVERY_REQUESTED else "false",
+            qos=1,
+            retain=True,
+        )
+        mqtt_publish_state_with_code(
+            f"{CFG['root_topic']}/recovery/reason",
+            recovery_reason,
+            RECOVERY_REASON_CODE_MAP,
+            default=99,
+        )
+        mqtt_publish_if_changed(
+            f"{CFG['root_topic']}/recovery/failure_count",
+            KLF_REFUSED_COUNT,
+            qos=1,
+            retain=True,
+        )
+        mqtt_publish_state_with_code(
+            f"{CFG['root_topic']}/recovery/state",
+            recovery_state,
+            RECOVERY_STATUS_CODE_MAP,
+            default=99,
+        )
+    except Exception:
+        logging.exception("publish_recovery_status failed")
+
+
 def publish_node_metadata():
     """
     Publishes the name <-> node_id mapping as retained topics for debugging.

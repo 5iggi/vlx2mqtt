@@ -119,12 +119,21 @@
 #topic_identifier-button {
   width: 240px !important;
 }
+
+/* Loxone Config export */
+.vlx-export-links { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:.6em 0; }
+.vlx-export-links a { min-width:88px; text-align:center; }
+.vlx-export-info { font-size:.9em; color:#555; margin:.4em 0 .6em 0; }
+.vlx-text2value { margin-top:.7em; border:1px solid #ddd; border-radius:6px; padding:8px 10px; background:#fff; }
+.vlx-text2value summary { cursor:pointer; font-weight:bold; }
+.vlx-text2value pre { white-space:pre-wrap; user-select:all; background:#f7f7f7; border:1px solid #ddd; padding:8px; border-radius:4px; }
+.vlx-service-status { width:100%; text-align:center; margin-top:2px; }
+
 </style>
 
 <form method="post" action="index.cgi">
-  <div style="display:flex; align-items:center; justify-content:center; width:100%; margin-bottom:1em; gap:10px; flex-wrap:wrap;">
-    <span id="servicestate"><TMPL_VAR UI.STATUS_LOADING></span>
-    <a style="width:60px;"
+  <div style="display:flex; align-items:center; justify-content:center; width:100%; margin-bottom:.2em; gap:10px; flex-wrap:wrap;">
+<a style="width:60px;"
        href="javascript:restartService();"
        id="btnrestart"
        data-role="button"
@@ -149,6 +158,7 @@
        href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template"><TMPL_VAR UI.SHOW_LOG></a>
   </div>
 
+  <div class="vlx-service-status"><span id="servicestate"><TMPL_VAR UI.STATUS_LOADING></span></div>
   <TMPL_IF NOTICE_VISIBLE>
     <div class="<TMPL_VAR NOTICE_CLASS>"><TMPL_VAR NOTICE></div>
   </TMPL_IF>
@@ -350,6 +360,43 @@
         <input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>" style="width:80px;">
       </div>
     </div>
+  </div>
+
+  <div class="vlx-card">
+    <h2><TMPL_VAR UI.SECTION_LOXONE_EXPORT></h2>
+    <p class="vlx-muted"><TMPL_VAR UI.LOXONE_EXPORT_NOTE></p>
+    <p class="vlx-export-info">
+      Host: <strong><TMPL_VAR LBOX_EXPORT_HOST></strong> ·
+      VIU: <strong><TMPL_VAR LBOX_VIU_PORT></strong> ·
+      VO: <strong><TMPL_VAR LBOX_VO_PORT></strong> ·
+      Root: <strong><TMPL_VAR LBOX_ROOT_TOPIC></strong> ·
+      Identifier: <strong><TMPL_VAR LBOX_TOPIC_IDENTIFIER></strong>
+    </p>
+    <div class="vlx-export-links">
+      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_viu"><TMPL_VAR UI.DOWNLOAD_VIU></a>
+      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_vo"><TMPL_VAR UI.DOWNLOAD_VO></a>
+      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_readme"><TMPL_VAR UI.DOWNLOAD_README></a>
+      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_zip"><TMPL_VAR UI.DOWNLOAD_ZIP></a>
+    </div>
+    <details class="vlx-text2value">
+      <summary><TMPL_VAR UI.LOXONE_MINI_GUIDE_TITLE></summary>
+      <div class="vlx-muted">
+        <p><strong><TMPL_VAR UI.LOXONE_MINI_GUIDE_XML_TITLE></strong></p>
+        <ul>
+          <li><TMPL_VAR UI.LOXONE_MINI_GUIDE_XML_VIU></li>
+          <li><TMPL_VAR UI.LOXONE_MINI_GUIDE_XML_VO></li>
+          <li><TMPL_VAR UI.LOXONE_MINI_GUIDE_ZIP></li>
+        </ul>
+        <p><strong><TMPL_VAR UI.LOXONE_MINI_GUIDE_STATUS_TITLE></strong></p>
+        <ul>
+          <li><code>status_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_STATUS_CODE></li>
+          <li><code>status_detail_code</code> / <code>status_live_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_KLF_CODE></li>
+          <li><code>service_status_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_SERVICE_CODE></li>
+          <li><code>recovery/state_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_RECOVERY_CODE></li>
+        </ul>
+        <p><TMPL_VAR UI.LOXONE_MINI_GUIDE_README></p>
+      </div>
+    </details>
   </div>
 
   <div class="vlx-card">
