@@ -20,9 +20,11 @@ VLX2MQTT connects a LoxBerry system directly to a VELUX KLF200 / Homecontrol IO 
 
 ## Documentation
 
-- [Documentation hub](docs/README.md)
-- [Deutsch](docs/de/README.md)
-- [English](docs/en/README.md)
+<p align="center">
+  <a href="docs/README.md"><img alt="Hub" src="https://img.shields.io/badge/Docs-Hub-f59e0b?style=for-the-badge"></a>
+  <a href="docs/de/README.md"><img alt="Deutsch" src="https://img.shields.io/badge/Docs-DE-1f6feb?style=for-the-badge"></a>
+  <a href="docs/en/README.md"><img alt="English" src="https://img.shields.io/badge/Docs-EN-2ea043?style=for-the-badge"></a>
+</p>
 
 ## Key features
 
