@@ -24,9 +24,13 @@ VLX2MQTT is a LoxBerry plugin that connects to a **VELUX KLF200 / Homecontrol IO
 ## Choose your language
 
 <p align="center">
-  <a href="de/README.md"><strong>Deutsch</strong></a>
-  &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="en/README.md"><strong>English</strong></a>
+  <a href="de/README.md">
+    <img alt="Deutsch" src="https://img.shields.io/badge/🇩🇪-Deutsch-1f6feb?style=for-the-badge">
+  </a>
+  &nbsp;
+  <a href="en/README.md">
+    <img alt="English" src="https://img.shields.io/badge/🇬🇧-English-2ea043?style=for-the-badge">
+  </a>
 </p>
 
 ## Quick start
