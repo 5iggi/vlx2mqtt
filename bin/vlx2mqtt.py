@@ -1136,6 +1136,7 @@ RECOVERY_REASON_CODE_MAP = {
     "klf_auth_failed": 6,
     "klf_error": 7,
     "preventive_recovery": 10,
+    "preventive_interval": 10,
     "unknown": 99,
 }
 
@@ -1225,7 +1226,7 @@ def publish_bridge_status():
             "klf_reconnect_in": KLF_RECONNECT_IN,
             "recovery_requested": RECOVERY_REQUESTED,
             "recovery_reason": RECOVERY_REASON,
-            "recovery_reason_code": state_code(RECOVERY_REASON, RECOVERY_REASON_CODE_MAP, 0),
+            "recovery_reason_code": state_code(RECOVERY_REASON, RECOVERY_REASON_CODE_MAP, 99),
             "failure_count": KLF_REFUSED_COUNT,
         }
         mqtt_publish_if_changed(
@@ -1337,15 +1338,29 @@ def request_external_recovery(reason: str):
     publish_recovery_status()
 
 
-def clear_external_recovery():
+def clear_external_recovery(clear_reason: str = ""):
     """
-    Resets the external recovery status.
+    Resets the external recovery status and republishes all related retained topics.
     """
-    global RECOVERY_REQUESTED, RECOVERY_REASON, WAIT_UNTIL_AFTER_RECOVERY
+    global RECOVERY_REQUESTED, RECOVERY_REASON, WAIT_UNTIL_AFTER_RECOVERY, SERVICE_DETAIL
+
+    previous_reason = RECOVERY_REASON
     RECOVERY_REQUESTED = False
     RECOVERY_REASON = None
     WAIT_UNTIL_AFTER_RECOVERY = None
+
+    # Clear the service detail that was set by request_external_recovery().
+    if SERVICE_DETAIL and str(SERVICE_DETAIL).startswith("external recovery requested:"):
+        SERVICE_DETAIL = None
+
+    logging.ok(
+        "External recovery cleared: previous_reason=%s%s",
+        previous_reason,
+        f" ({clear_reason})" if clear_reason else "",
+    )
     publish_recovery_status()
+    publish_service_status()
+    publish_bridge_status()
 
 
 def any_node_moving() -> bool:
@@ -2475,6 +2490,33 @@ async def event_stale_monitor_task():
             logging.exception("event_stale_monitor_task failed")
 
 
+async def recovery_clear_monitor_task():
+    """
+    Clears a requested external recovery after the configured grace time once the KLF is connected again.
+
+    This also covers preventive recovery requests where the external automation does not actually
+    power-cycle the KLF. Without this monitor, retained recovery topics can stay on
+    powercycle_required=true although the bridge is healthy again.
+    """
+    while True:
+        try:
+            await asyncio.sleep(5)
+            if not RECOVERY_REQUESTED:
+                continue
+            if WAIT_UNTIL_AFTER_RECOVERY is None:
+                continue
+            if time.time() < WAIT_UNTIL_AFTER_RECOVERY:
+                continue
+
+            if SERVICE_STATE == "running" and KLF_STATE == "klf_connected":
+                clear_external_recovery("grace elapsed and KLF connected")
+
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logging.exception("recovery_clear_monitor_task failed")
+
+
 async def preventive_recovery_task():
     """
     Optional preventive recovery request every X hours.
@@ -2619,6 +2661,7 @@ async def main():
             asyncio.create_task(moving_watchdog()),
             asyncio.create_task(poll_rain_sensors()),
             asyncio.create_task(preventive_recovery_task()),
+            asyncio.create_task(recovery_clear_monitor_task()),
             asyncio.create_task(event_stale_monitor_task()),
         ]
 
