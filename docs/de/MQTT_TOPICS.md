@@ -56,7 +56,6 @@ klf_connection_refused=5
 klf_auth_failed=6
 klf_error=7
 starting=8
-preventive_interval=10
 unknown=99
 
 running=1
@@ -127,8 +126,11 @@ klf_connection_refused=5
 klf_auth_failed=6
 klf_error=7
 preventive_recovery=10
+preventive_interval=10
 unknown=99
 ```
+
+`preventive_interval` ist der aktuell publizierte Recovery-Grund, wenn die präventive Recovery durch `preventive_recovery_hours` ausgelöst wurde. `preventive_recovery` bleibt als kompatibler Alias mit demselben Code dokumentiert.
 
 ## Health JSON
 

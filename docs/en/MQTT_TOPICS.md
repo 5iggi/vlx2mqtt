@@ -126,8 +126,11 @@ klf_connection_refused=5
 klf_auth_failed=6
 klf_error=7
 preventive_recovery=10
+preventive_interval=10
 unknown=99
 ```
+
+`preventive_interval` is the currently published recovery reason when preventive recovery is triggered by `preventive_recovery_hours`. `preventive_recovery` remains documented as a compatible alias with the same code.
 
 ## Health JSON
 
