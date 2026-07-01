@@ -56,6 +56,7 @@ klf_connection_refused=5
 klf_auth_failed=6
 klf_error=7
 starting=8
+preventive_interval=10
 unknown=99
 
 running=1
