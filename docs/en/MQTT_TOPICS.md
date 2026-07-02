@@ -26,6 +26,13 @@ This file describes the most important MQTT topics of VLX2MQTT.
 <node>         device name or node_id, depending on topic_identifier
 ```
 
+Examples:
+
+```text
+vlx2mqtt/Window_left/position
+vlx2mqtt/0/position
+```
+
 ## Status and diagnostic topics
 
 ```text
@@ -44,10 +51,35 @@ This file describes the most important MQTT topics of VLX2MQTT.
 
 ## Numeric status codes
 
+The `*_code` topics provide numeric values for Loxone and other visualizations.  
+The corresponding text topics are still published as well.
+
+### `status_code`
+
+Belongs to:
+
+```text
+<root_topic>/status
+<root_topic>/status_code
+```
+
 ```text
 ok=1
 error=0
+```
 
+### `status_detail_code`
+
+Belongs to:
+
+```text
+<root_topic>/status_detail
+<root_topic>/status_detail_code
+```
+
+`status_detail` is the stable detailed status. If the service is running, the value usually reflects the KLF state. If the service is not running or starting, the value may be service-related.
+
+```text
 klf_connected=1
 klf_connecting=2
 klf_disconnected=3
@@ -58,6 +90,46 @@ klf_error=7
 starting=8
 unknown=99
 
+service_running=1
+service_starting=2
+service_stopped=0
+service_lost=0
+service_error=0
+```
+
+### `status_live_code`
+
+Belongs to:
+
+```text
+<root_topic>/status_live
+<root_topic>/status_live_code
+```
+
+`status_live` is the raw live status of the KLF connection.
+
+```text
+klf_connected=1
+klf_connecting=2
+klf_disconnected=3
+klf_unreachable=4
+klf_connection_refused=5
+klf_auth_failed=6
+klf_error=7
+starting=8
+unknown=99
+```
+
+### `service_status_code`
+
+Belongs to:
+
+```text
+<root_topic>/service_status
+<root_topic>/service_status_code
+```
+
+```text
 running=1
 starting=2
 stopped=0
@@ -75,6 +147,36 @@ unknown=99
 <root_topic>/<node>/rain
 <root_topic>/<node>/rain_raw_limit
 ```
+
+### `position`
+
+Current device position in percent.
+
+```text
+0..100
+```
+
+### `moving`
+
+Derived movement state.
+
+```text
+true
+false
+```
+
+### `rain`
+
+Indirect rain state for supported windows.
+
+```text
+true
+false
+```
+
+### `rain_raw_limit`
+
+Optional raw value of the indirect rain detection. It is only published if `publish_rain_raw_limit = true` is set.
 
 ## Control via MQTT
 
@@ -108,6 +210,13 @@ vlx2mqtt/Window_left/set = 65
 
 ### `recovery/state_code`
 
+Belongs to:
+
+```text
+<root_topic>/recovery/state
+<root_topic>/recovery/state_code
+```
+
 ```text
 idle=0
 requested=1
@@ -115,6 +224,13 @@ waiting=2
 ```
 
 ### `recovery/reason_code`
+
+Belongs to:
+
+```text
+<root_topic>/recovery/reason
+<root_topic>/recovery/reason_code
+```
 
 ```text
 none=0
@@ -130,11 +246,31 @@ preventive_interval=10
 unknown=99
 ```
 
-`preventive_interval` is the currently published recovery reason when preventive recovery is triggered by `preventive_recovery_hours`. `preventive_recovery` remains documented as a compatible alias with the same code.
+`preventive_interval` is the currently published recovery reason when preventive recovery is triggered by `preventive_recovery_hours`.  
+`preventive_recovery` remains documented as a compatible alias with the same code.
 
 ## Health JSON
 
 `<root_topic>/health` contains a JSON summary with status, service state, KLF state, recovery information and counters.
+
+Example:
+
+```json
+{
+  "status": "ok",
+  "status_code": 1,
+  "status_detail": "klf_connected",
+  "status_detail_code": 1,
+  "status_live": "klf_connected",
+  "status_live_code": 1,
+  "service_state": "running",
+  "service_status_code": 1,
+  "recovery_requested": false,
+  "recovery_reason": null,
+  "recovery_reason_code": 0,
+  "failure_count": 0
+}
+```
 
 ---
 

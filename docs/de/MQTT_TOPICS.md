@@ -26,6 +26,13 @@ Diese Datei beschreibt die wichtigsten MQTT-Topics von VLX2MQTT.
 <node>         Gerätename oder node_id, abhängig von topic_identifier
 ```
 
+Beispiele:
+
+```text
+vlx2mqtt/Fenster_links/position
+vlx2mqtt/0/position
+```
+
 ## Status- und Diagnose-Topics
 
 ```text
@@ -44,10 +51,35 @@ Diese Datei beschreibt die wichtigsten MQTT-Topics von VLX2MQTT.
 
 ## Numerische Statuscodes
 
+Die `*_code` Topics liefern numerische Werte für Loxone und andere Visualisierungen.  
+Die zugehörigen Text-Topics bleiben zusätzlich erhalten.
+
+### `status_code`
+
+Gehört zu:
+
+```text
+<root_topic>/status
+<root_topic>/status_code
+```
+
 ```text
 ok=1
 error=0
+```
 
+### `status_detail_code`
+
+Gehört zu:
+
+```text
+<root_topic>/status_detail
+<root_topic>/status_detail_code
+```
+
+`status_detail` ist der stabile Detailstatus. Wenn der Dienst läuft, entspricht der Wert normalerweise dem KLF-Status. Wenn der Dienst nicht läuft oder startet, kann der Wert dienstbezogen sein.
+
+```text
 klf_connected=1
 klf_connecting=2
 klf_disconnected=3
@@ -58,6 +90,46 @@ klf_error=7
 starting=8
 unknown=99
 
+service_running=1
+service_starting=2
+service_stopped=0
+service_lost=0
+service_error=0
+```
+
+### `status_live_code`
+
+Gehört zu:
+
+```text
+<root_topic>/status_live
+<root_topic>/status_live_code
+```
+
+`status_live` ist der rohe Live-Status der KLF-Verbindung.
+
+```text
+klf_connected=1
+klf_connecting=2
+klf_disconnected=3
+klf_unreachable=4
+klf_connection_refused=5
+klf_auth_failed=6
+klf_error=7
+starting=8
+unknown=99
+```
+
+### `service_status_code`
+
+Gehört zu:
+
+```text
+<root_topic>/service_status
+<root_topic>/service_status_code
+```
+
+```text
 running=1
 starting=2
 stopped=0
@@ -75,6 +147,36 @@ unknown=99
 <root_topic>/<node>/rain
 <root_topic>/<node>/rain_raw_limit
 ```
+
+### `position`
+
+Aktuelle Position des Geräts in Prozent.
+
+```text
+0..100
+```
+
+### `moving`
+
+Abgeleiteter Bewegungsstatus.
+
+```text
+true
+false
+```
+
+### `rain`
+
+Indirekter Regenstatus für unterstützte Fenster.
+
+```text
+true
+false
+```
+
+### `rain_raw_limit`
+
+Optionaler Rohwert der indirekten Regen-Erkennung. Wird nur veröffentlicht, wenn `publish_rain_raw_limit = true` gesetzt ist.
 
 ## Steuerung per MQTT
 
@@ -108,6 +210,13 @@ vlx2mqtt/Fenster_links/set = 65
 
 ### `recovery/state_code`
 
+Gehört zu:
+
+```text
+<root_topic>/recovery/state
+<root_topic>/recovery/state_code
+```
+
 ```text
 idle=0
 requested=1
@@ -115,6 +224,13 @@ waiting=2
 ```
 
 ### `recovery/reason_code`
+
+Gehört zu:
+
+```text
+<root_topic>/recovery/reason
+<root_topic>/recovery/reason_code
+```
 
 ```text
 none=0
@@ -130,11 +246,31 @@ preventive_interval=10
 unknown=99
 ```
 
-`preventive_interval` ist der aktuell publizierte Recovery-Grund, wenn die präventive Recovery durch `preventive_recovery_hours` ausgelöst wurde. `preventive_recovery` bleibt als kompatibler Alias mit demselben Code dokumentiert.
+`preventive_interval` ist der aktuell publizierte Recovery-Grund, wenn die präventive Recovery durch `preventive_recovery_hours` ausgelöst wurde.  
+`preventive_recovery` bleibt als kompatibler Alias mit demselben Code dokumentiert.
 
 ## Health JSON
 
 `<root_topic>/health` enthält eine JSON-Zusammenfassung mit Status, Servicezustand, KLF-Zustand, Recovery-Informationen und Zählern.
+
+Beispiel:
+
+```json
+{
+  "status": "ok",
+  "status_code": 1,
+  "status_detail": "klf_connected",
+  "status_detail_code": 1,
+  "status_live": "klf_connected",
+  "status_live_code": 1,
+  "service_state": "running",
+  "service_status_code": 1,
+  "recovery_requested": false,
+  "recovery_reason": null,
+  "recovery_reason_code": 0,
+  "failure_count": 0
+}
+```
 
 ---
 
