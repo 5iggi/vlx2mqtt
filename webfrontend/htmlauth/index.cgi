@@ -9,6 +9,7 @@ use HTML::Template;
 use Config::Simple;
 use JSON;
 use FindBin qw($Bin);
+use File::Path qw(make_path);
 use Encode qw(encode decode FB_CROAK);
 use LoxBerry::System;
 use LoxBerry::Web;
@@ -36,6 +37,8 @@ my %DEFAULTS = (
     'vlx2mqtt.logfile'                     => $default_logfile,
     'vlx2mqtt.external_recovery_enabled'   => '0',
     'vlx2mqtt.external_recovery_threshold' => '4',
+    'vlx2mqtt.runtime_recovery_command_weight' => '2',
+    'vlx2mqtt.runtime_recovery_rain_weight'    => '1',
     'vlx2mqtt.external_recovery_cooldown'  => '1800',
     'vlx2mqtt.external_recovery_grace'     => '120',
     'vlx2mqtt.external_recovery_topic'     => 'vlx2mqtt/recovery/powercycle_required',
@@ -43,6 +46,8 @@ my %DEFAULTS = (
     'vlx2mqtt.topic_identifier'            => 'name',
     'vlx2mqtt.rain_poll_interval'          => '300',
     'vlx2mqtt.publish_rain_raw_limit'      => '0',
+    'vlx2mqtt.event_monitor_interval'      => '60',
+    'vlx2mqtt.event_stale_warn_seconds'    => '900',
 );
 
 sub template_path {
@@ -89,12 +94,22 @@ sub load_cfg_hash {
 
 sub save_cfg_hash {
     my ($file, $cfg) = @_;
+    if ($file =~ m{^(.+)/[^/]+$}) {
+        make_path($1) if !-d $1;
+    }
     my $cs = Config::Simple->new(syntax => 'ini');
     for my $key (sort keys %{$cfg}) {
         $cs->param($key, $cfg->{$key});
     }
     $cs->write($file) or die "Cannot write config $file";
     chmod 0600, $file;
+}
+
+sub ensure_config_file {
+    my ($file, $cfg) = @_;
+    return if -e $file;
+    eval { save_cfg_hash($file, $cfg); };
+    warn "Cannot create initial config $file: $@" if $@;
 }
 
 sub service_status {
@@ -500,6 +515,7 @@ sub lang {
 }
 
 my $cfg = load_cfg_hash($config_file);
+ensure_config_file($config_file, $cfg);
 my $notice = '';
 my $notice_class = 'notice-info';
 my $notice_visible = 0;
@@ -585,6 +601,8 @@ if ($cgi->param('save')) {
     $newcfg{'vlx2mqtt.event_stale_warn_seconds'} = trim($cgi->param('event_stale_warn_seconds'));
     $newcfg{'vlx2mqtt.external_recovery_enabled'} = bool_param('external_recovery_enabled');
     $newcfg{'vlx2mqtt.external_recovery_threshold'} = trim($cgi->param('external_recovery_threshold'));
+    $newcfg{'vlx2mqtt.runtime_recovery_command_weight'} = trim($cgi->param('runtime_recovery_command_weight')) || '2';
+    $newcfg{'vlx2mqtt.runtime_recovery_rain_weight'} = trim($cgi->param('runtime_recovery_rain_weight')) || '1';
     $newcfg{'vlx2mqtt.external_recovery_cooldown'} = trim($cgi->param('external_recovery_cooldown'));
     $newcfg{'vlx2mqtt.external_recovery_grace'} = trim($cgi->param('external_recovery_grace'));
     $newcfg{'vlx2mqtt.external_recovery_topic'} =
@@ -596,6 +614,8 @@ if ($cgi->param('save')) {
         my %validation_fallback = (
             'CFG.INVALID_EVENT_MONITOR_INTERVAL' => 'Event monitor interval must be an integer >= 30 seconds',
             'CFG.INVALID_EVENT_STALE_WARN_SECONDS' => 'Event stale warning threshold must be an integer >= 60 seconds',
+            'CFG.INVALID_RUNTIME_RECOVERY_COMMAND_WEIGHT' => 'Command runtime recovery weight must be an integer >= 1',
+            'CFG.INVALID_RUNTIME_RECOVERY_RAIN_WEIGHT' => 'Rain runtime recovery weight must be an integer >= 1',
         );
         $notice = lang($validation_error, $validation_fallback{$validation_error} // $validation_error);
         $notice_class = 'notice-error';
@@ -649,6 +669,8 @@ $template->param(
     debug_verbose_checked               => ($cfg->{'vlx2mqtt.verbose'} ? 'checked' : ''),
     external_recovery_enabled_checked   => ($cfg->{'vlx2mqtt.external_recovery_enabled'} ? 'checked' : ''),
     external_recovery_threshold         => maybe_unmangle($cfg->{'vlx2mqtt.external_recovery_threshold'}),
+    runtime_recovery_command_weight     => maybe_unmangle($cfg->{'vlx2mqtt.runtime_recovery_command_weight'} || '2'),
+    runtime_recovery_rain_weight        => maybe_unmangle($cfg->{'vlx2mqtt.runtime_recovery_rain_weight'} || '1'),
     external_recovery_cooldown          => maybe_unmangle($cfg->{'vlx2mqtt.external_recovery_cooldown'}),
     external_recovery_grace             => maybe_unmangle($cfg->{'vlx2mqtt.external_recovery_grace'}),
     external_recovery_topic             => maybe_unmangle($cfg->{'vlx2mqtt.external_recovery_topic'}),
