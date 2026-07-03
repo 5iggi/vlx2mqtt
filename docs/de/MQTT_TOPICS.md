@@ -249,6 +249,21 @@ unknown=99
 `preventive_interval` ist der aktuell publizierte Recovery-Grund, wenn die präventive Recovery durch `preventive_recovery_hours` ausgelöst wurde.  
 `preventive_recovery` bleibt als kompatibler Alias mit demselben Code dokumentiert.
 
+### Runtime-Recovery-Gewichtung
+
+Im laufenden Betrieb werden Recovery-relevante Fehler gewichtet gezählt:
+
+```ini
+runtime_recovery_command_weight = 2
+runtime_recovery_rain_weight = 1
+```
+
+Standardmäßig zählt ein fehlgeschlagener Fahr-/Positionsbefehl `+2`, eine fehlgeschlagene Regen-/Limitation-Abfrage nach Retry `+1`.
+
+### `recovery/state = waiting`
+
+`waiting` bedeutet: Der Recovery-Schwellwert wurde erreicht, aber `external_recovery_cooldown` ist noch aktiv. Währenddessen bleibt `powercycle_required=false`. Nach Ablauf des Cooldowns wird automatisch `powercycle_required=true` gesetzt, wenn die KLF weiterhin nicht verbunden ist.
+
 ## Health JSON
 
 `<root_topic>/health` enthält eine JSON-Zusammenfassung mit Status, Servicezustand, KLF-Zustand, Recovery-Informationen und Zählern.
@@ -266,6 +281,8 @@ Beispiel:
   "service_state": "running",
   "service_status_code": 1,
   "recovery_requested": false,
+  "recovery_waiting": false,
+  "recovery_waiting_until": null,
   "recovery_reason": null,
   "recovery_reason_code": 0,
   "failure_count": 0

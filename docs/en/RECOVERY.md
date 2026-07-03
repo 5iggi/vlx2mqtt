@@ -15,17 +15,42 @@
   <img alt="Loxone" src="https://img.shields.io/badge/Loxone-Export-orange?style=flat-square">
 </p>
 
-# Recovery / Power Cycle
+# Recovery / Power-Cycle
 
-VLX2MQTT can optionally publish an external recovery / power-cycle trigger via MQTT when repeated KLF connection problems occur.
+VLX2MQTT can optionally publish an external recovery / power-cycle trigger via MQTT after repeated KLF connection problems.
 
-## Goal
+## Purpose
 
-In practice, the KLF200 may become unstable after long runtime or repeated connection attempts. VLX2MQTT can detect this state and set an MQTT topic that can be evaluated by external automation.
+In practice, the KLF200 may become unstable after long uptime, network issues or repeated connection attempts. VLX2MQTT can detect this situation and publish an MQTT topic that can be evaluated by an external automation.
 
 ```text
 vlx2mqtt/recovery/powercycle_required = true
 ```
+
+Typical use case: Loxone or another automation briefly switches the external power supply of the KLF200 off and on again.
+
+## When is recovery triggered?
+
+VLX2MQTT distinguishes two types of recovery-relevant failures:
+
+1. **Connect / reconnect failures** during startup or while reconnecting to the KLF200.
+2. **Runtime failures** while the bridge is already running, for example if a movement command or rain / limitation read can no longer be sent to the KLF200.
+
+Runtime failures are counted with weights:
+
+```ini
+runtime_recovery_command_weight = 2
+runtime_recovery_rain_weight = 1
+```
+
+Default behavior:
+
+```text
+failed movement / position command = +2
+failed rain / limitation read after retry = +1
+```
+
+If the weighted failure counter reaches `external_recovery_threshold` and no cooldown is active, `powercycle_required=true` is published.
 
 ## Relevant error states
 
@@ -40,6 +65,8 @@ klf_unreachable
 ```ini
 external_recovery_enabled = false
 external_recovery_threshold = 4
+runtime_recovery_command_weight = 2
+runtime_recovery_rain_weight = 1
 external_recovery_cooldown = 1800
 external_recovery_grace = 120
 external_recovery_topic = vlx2mqtt/recovery/powercycle_required
@@ -65,13 +92,42 @@ requested=1
 waiting=2
 ```
 
+## Sequence without active cooldown
+
+If `external_recovery_enabled = true` is set, the weighted failure counter reaches the threshold and no cooldown is active, VLX2MQTT publishes:
+
+```text
+<root_topic>/recovery/powercycle_required = true
+<root_topic>/recovery/state = requested
+<root_topic>/recovery/state_code = 1
+<root_topic>/recovery/reason = <klf_state>
+<root_topic>/recovery/reason_code = <code>
+```
+
+## Sequence with active cooldown
+
+If the threshold is reached while `external_recovery_cooldown` is still active, **no immediate power-cycle** is requested. Instead, VLX2MQTT enters the `waiting` state:
+
+```text
+<root_topic>/recovery/powercycle_required = false
+<root_topic>/recovery/state = waiting
+<root_topic>/recovery/state_code = 2
+<root_topic>/recovery/reason = <klf_state>
+<root_topic>/recovery/reason_code = <code>
+```
+
+After the cooldown has elapsed, `powercycle_required=true` is set automatically if the KLF200 is still not connected.
+
+If the KLF200 reconnects before the cooldown expires, the waiting state is cleared automatically.
+
 ## Recommendation
 
-- Enable external recovery only if an external power-cycle device actually exists.
-- Choose `external_recovery_cooldown` high enough.
-- Set `external_recovery_grace` so that the KLF is fully reachable again after a power cycle.
+- Only enable external recovery if an external power-cycle setup actually exists.
+- Use a sufficiently large `external_recovery_cooldown` in production, for example `1800` seconds.
+- For testing, `external_recovery_cooldown` can be temporarily reduced, for example to `60` seconds.
+- Set `external_recovery_grace` so that the KLF can become fully reachable again after the power-cycle.
 - Do not trigger a KLF reboot on a normal service stop.
-- Use preventive recovery consciously and conservatively.
+- Use preventive recovery deliberately and conservatively.
 
 ---
 
