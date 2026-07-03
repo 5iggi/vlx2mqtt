@@ -28,7 +28,9 @@
   width: 80px;
 }
 #event_monitor_interval,
-#event_stale_warn_seconds {
+#event_stale_warn_seconds,
+#runtime_recovery_command_weight,
+#runtime_recovery_rain_weight {
   width: 80px;
 }
 .vlx-card {
@@ -337,6 +339,20 @@
           <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_THRESHOLD>">?</span>
         </span>
         <input id="external_recovery_threshold" type="text" name="external_recovery_threshold" value="<TMPL_VAR external_recovery_threshold>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="runtime_recovery_command_weight"><strong><TMPL_VAR UI.RUNTIME_RECOVERY_COMMAND_WEIGHT></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.RUNTIME_RECOVERY_COMMAND_WEIGHT>">?</span>
+        </span>
+        <input id="runtime_recovery_command_weight" type="text" name="runtime_recovery_command_weight" value="<TMPL_VAR runtime_recovery_command_weight>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
+          <label for="runtime_recovery_rain_weight"><strong><TMPL_VAR UI.RUNTIME_RECOVERY_RAIN_WEIGHT></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.RUNTIME_RECOVERY_RAIN_WEIGHT>">?</span>
+        </span>
+        <input id="runtime_recovery_rain_weight" type="text" name="runtime_recovery_rain_weight" value="<TMPL_VAR runtime_recovery_rain_weight>" style="width:80px;">
       </div>
       <div>
         <span class="help-inline">
