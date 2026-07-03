@@ -99,6 +99,8 @@ DEFAULT_CFG = {
     "logfile": "/opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log",
     "external_recovery_enabled": False,
     "external_recovery_threshold": 4,
+    "runtime_recovery_command_weight": 2,
+    "runtime_recovery_rain_weight": 1,
     "external_recovery_cooldown": 1800.0,
     "external_recovery_grace": 120.0,
     "external_recovery_topic": "vlx2mqtt/recovery/powercycle_required",
@@ -163,6 +165,12 @@ def load_cfg_file(path: str) -> dict:
     )
     cfg["external_recovery_threshold"] = sec.getint(
         "external_recovery_threshold", fallback=cfg["external_recovery_threshold"]
+    )
+    cfg["runtime_recovery_command_weight"] = sec.getint(
+        "runtime_recovery_command_weight", fallback=cfg["runtime_recovery_command_weight"]
+    )
+    cfg["runtime_recovery_rain_weight"] = sec.getint(
+        "runtime_recovery_rain_weight", fallback=cfg["runtime_recovery_rain_weight"]
     )
     cfg["external_recovery_cooldown"] = sec.getfloat(
         "external_recovery_cooldown", fallback=cfg["external_recovery_cooldown"]
@@ -544,50 +552,30 @@ async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
 
         if hasattr(node, "get_limitation_min"):
             limitation = await node.get_limitation_min()
-            logging.debug(
-                "read_rain_state: get_limitation_min() for %s -> %r",
-                node_name,
-                limitation,
-            )
+            logging.debug("read_rain_state: get_limitation_min() for %s -> %r", node_name, limitation)
             if limitation is not None:
                 raw = getattr(limitation, "position_percent", None)
                 if raw is None:
                     raw = getattr(limitation, "min_value", None)
-
         elif hasattr(node, "get_limitation"):
             limitation = await node.get_limitation()
-            logging.debug(
-                "read_rain_state: get_limitation() for %s -> %r",
-                node_name,
-                limitation,
-            )
+            logging.debug("read_rain_state: get_limitation() for %s -> %r", node_name, limitation)
             if limitation is not None:
                 raw = getattr(limitation, "min_value", None)
                 if raw is None:
                     raw = getattr(limitation, "position_percent", None)
         else:
-            logging.debug(
-                "read_rain_state: node %s supports neither get_limitation_min nor get_limitation",
-                node_name,
-            )
+            logging.debug("read_rain_state: node %s supports neither get_limitation_min nor get_limitation", node_name)
             return None, None
 
-        logging.debug(
-            "read_rain_state: raw limitation for %s -> %r",
-            node_name,
-            raw,
-        )
-
+        logging.debug("read_rain_state: raw limitation for %s -> %r", node_name, raw)
         if raw is None:
             return None, None
-
         raw_int = normalize_from_device(raw)
         if raw_int is None:
             return None, None
-
         return (raw_int >= 89), raw_int
 
-    # Short retry for transient KLF / pyvlx send problems
     retry_delays = (0.0, 0.6)
     last_exc: Optional[Exception] = None
 
@@ -595,34 +583,32 @@ async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
         try:
             if delay > 0:
                 await asyncio.sleep(delay)
-            return await _read_once()
+            result = await _read_once()
+            note_klf_runtime_success(f"rain_state:{node_name}")
+            return result
         except PyVLXException as exc:
             last_exc = exc
             if "Unable to send command" in str(exc):
                 if attempt < len(retry_delays):
-                    logging.warning(
-                        "read_rain_state transient send failure for %s (attempt %s/%s) - retrying",
-                        node_name,
-                        attempt,
-                        len(retry_delays),
-                    )
+                    logging.warning("read_rain_state transient send failure for %s (attempt %s/%s) - retrying", node_name, attempt, len(retry_delays))
                     continue
-                logging.warning(
-                    "read_rain_state failed for %s after retry: %s",
-                    node_name,
-                    exc,
-                )
+                logging.warning("read_rain_state failed for %s after retry: %s", node_name, exc)
+                note_klf_runtime_failure(exc, f"rain_state:{node_name}")
                 return None, None
             logging.exception("read_rain_state failed for %s", node_name)
+            note_klf_runtime_failure(exc, f"rain_state:{node_name}")
             return None, None
         except Exception as exc:
             last_exc = exc
             logging.exception("read_rain_state failed for %s", node_name)
+            note_klf_runtime_failure(exc, f"rain_state:{node_name}")
             return None, None
 
     if last_exc is not None:
         logging.warning("read_rain_state failed for %s: %s", node_name, last_exc)
+        note_klf_runtime_failure(last_exc, f"rain_state:{node_name}")
     return None, None
+
 
 
 # ============================================================
@@ -725,6 +711,9 @@ LAST_EXTERNAL_RECOVERY_TS = None
 WAIT_UNTIL_AFTER_RECOVERY = None
 RECOVERY_REQUESTED = False
 RECOVERY_REASON = None
+RECOVERY_WAITING = False
+RECOVERY_WAITING_REASON = None
+RECOVERY_WAITING_UNTIL = None
 MAIN_LOOP = None
 LAST_PUBLISHED = {}
 
@@ -940,6 +929,10 @@ def submit_coro_from_thread(coro, description: str = ""):
     def _done_callback(fut):
         try:
             fut.result()
+            cmd, label = _parse_description(description)
+
+            if cmd in ("OPEN", "CLOSE", "STOP"):
+                note_klf_runtime_success(f"command:{label}:{cmd}")
 
             if not CFG.get("verbose", False):
                 success_msg = _compact_success_from_description(description)
@@ -949,7 +942,11 @@ def submit_coro_from_thread(coro, description: str = ""):
         except (asyncio.CancelledError, concurrent.futures.CancelledError):
             return
 
-        except Exception:
+        except Exception as exc:
+            cmd, label = _parse_description(description)
+            if cmd in ("OPEN", "CLOSE", "STOP", "FINALIZE_STOP"):
+                note_klf_runtime_failure(exc, f"command:{label}:{cmd}")
+
             if CFG.get("verbose", False):
                 logging.exception("Coroutine failed: %s", description or coro)
             else:
@@ -1061,7 +1058,7 @@ def publish_recovery_status():
         )
         mqtt_publish_if_changed(
             f"{CFG['root_topic']}/recovery/reason",
-            "" if RECOVERY_REASON is None else str(RECOVERY_REASON),
+            "none" if RECOVERY_REASON is None else str(RECOVERY_REASON),
             qos=1,
             retain=True,
         )
@@ -1073,7 +1070,7 @@ def publish_recovery_status():
         )
         mqtt_publish_if_changed(
             f"{CFG['root_topic']}/recovery/state",
-            "requested" if RECOVERY_REQUESTED else "idle",
+            "requested" if RECOVERY_REQUESTED else ("waiting" if RECOVERY_WAITING else "idle"),
             qos=1,
             retain=True,
         )
@@ -1225,7 +1222,9 @@ def publish_bridge_status():
             "last_klf_ok_ts": LAST_KLF_OK_TS,
             "klf_reconnect_in": KLF_RECONNECT_IN,
             "recovery_requested": RECOVERY_REQUESTED,
-            "recovery_reason": RECOVERY_REASON,
+            "recovery_waiting": RECOVERY_WAITING,
+            "recovery_waiting_until": RECOVERY_WAITING_UNTIL,
+            "recovery_reason": RECOVERY_REASON if RECOVERY_REQUESTED else (RECOVERY_WAITING_REASON if RECOVERY_WAITING else None),
             "recovery_reason_code": state_code(RECOVERY_REASON, RECOVERY_REASON_CODE_MAP, 99),
             "failure_count": KLF_REFUSED_COUNT,
         }
@@ -1242,8 +1241,15 @@ def publish_bridge_status():
 def publish_recovery_status():
     """Publish external recovery state including numeric code topics."""
     try:
-        recovery_reason = "" if RECOVERY_REASON is None else str(RECOVERY_REASON)
-        recovery_state = "requested" if RECOVERY_REQUESTED else "idle"
+        if RECOVERY_REQUESTED:
+            recovery_reason = "none" if RECOVERY_REASON is None else str(RECOVERY_REASON)
+            recovery_state = "requested"
+        elif RECOVERY_WAITING:
+            recovery_reason = "none" if RECOVERY_WAITING_REASON is None else str(RECOVERY_WAITING_REASON)
+            recovery_state = "waiting"
+        else:
+            recovery_reason = "none"
+            recovery_state = "idle"
 
         mqtt_publish_if_changed(
             CFG["external_recovery_topic"],
@@ -1318,8 +1324,12 @@ def request_external_recovery(reason: str):
     Requests an external recovery (typically: Loxone turns the smart plug off/on).
     """
     global RECOVERY_REQUESTED, RECOVERY_REASON, LAST_EXTERNAL_RECOVERY_TS, WAIT_UNTIL_AFTER_RECOVERY, SERVICE_DETAIL
+    global RECOVERY_WAITING, RECOVERY_WAITING_REASON, RECOVERY_WAITING_UNTIL
 
     now = time.time()
+    RECOVERY_WAITING = False
+    RECOVERY_WAITING_REASON = None
+    RECOVERY_WAITING_UNTIL = None
     RECOVERY_REQUESTED = True
     RECOVERY_REASON = reason
     LAST_EXTERNAL_RECOVERY_TS = now
@@ -1343,14 +1353,18 @@ def clear_external_recovery(clear_reason: str = ""):
     Resets the external recovery status and republishes all related retained topics.
     """
     global RECOVERY_REQUESTED, RECOVERY_REASON, WAIT_UNTIL_AFTER_RECOVERY, SERVICE_DETAIL
+    global RECOVERY_WAITING, RECOVERY_WAITING_REASON, RECOVERY_WAITING_UNTIL
 
-    previous_reason = RECOVERY_REASON
+    previous_reason = RECOVERY_REASON or RECOVERY_WAITING_REASON
     RECOVERY_REQUESTED = False
     RECOVERY_REASON = None
+    RECOVERY_WAITING = False
+    RECOVERY_WAITING_REASON = None
+    RECOVERY_WAITING_UNTIL = None
     WAIT_UNTIL_AFTER_RECOVERY = None
 
     # Clear the service detail that was set by request_external_recovery().
-    if SERVICE_DETAIL and str(SERVICE_DETAIL).startswith("external recovery requested:"):
+    if SERVICE_DETAIL and (str(SERVICE_DETAIL).startswith("external recovery requested:") or str(SERVICE_DETAIL).startswith("external recovery waiting:")):
         SERVICE_DETAIL = None
 
     logging.ok(
@@ -1359,6 +1373,116 @@ def clear_external_recovery(clear_reason: str = ""):
         f" ({clear_reason})" if clear_reason else "",
     )
     publish_recovery_status()
+    publish_service_status()
+    publish_bridge_status()
+
+
+def note_klf_runtime_success(context: str = ""):
+    """Marks a successful runtime KLF operation."""
+    global KLF_STATE, LAST_KLF_ERROR, LAST_KLF_OK_TS, KLF_REFUSED_COUNT, SERVICE_DETAIL
+    global RECOVERY_WAITING, RECOVERY_WAITING_REASON, RECOVERY_WAITING_UNTIL
+
+    changed = False
+    if KLF_STATE != "klf_connected":
+        KLF_STATE = "klf_connected"
+        changed = True
+    if LAST_KLF_ERROR is not None:
+        LAST_KLF_ERROR = None
+        changed = True
+    if KLF_REFUSED_COUNT:
+        KLF_REFUSED_COUNT = 0
+        changed = True
+    if RECOVERY_WAITING:
+        RECOVERY_WAITING = False
+        RECOVERY_WAITING_REASON = None
+        RECOVERY_WAITING_UNTIL = None
+        changed = True
+    if SERVICE_DETAIL and (str(SERVICE_DETAIL).startswith("KLF runtime failure") or str(SERVICE_DETAIL).startswith("external recovery waiting:")):
+        SERVICE_DETAIL = None
+        changed = True
+
+    LAST_KLF_OK_TS = datetime.now(timezone.utc).isoformat()
+    if changed:
+        if CFG.get("verbose", False):
+            logging.debug("KLF runtime success: context=%s", context)
+        publish_recovery_status()
+        publish_service_status()
+        publish_bridge_status()
+
+
+def _runtime_failure_weight(context: str) -> int:
+    txt = str(context or "").lower()
+    try:
+        if txt.startswith("command:"):
+            return max(1, int(float(CFG.get("runtime_recovery_command_weight", 2))))
+        if txt.startswith("rain_state:"):
+            return max(1, int(float(CFG.get("runtime_recovery_rain_weight", 1))))
+    except Exception:
+        pass
+    return 1
+
+
+def _external_recovery_cooldown_remaining() -> float:
+    if LAST_EXTERNAL_RECOVERY_TS is None:
+        return 0.0
+    try:
+        remaining = (float(LAST_EXTERNAL_RECOVERY_TS) + float(CFG["external_recovery_cooldown"])) - time.time()
+    except Exception:
+        return 0.0
+    return max(0.0, remaining)
+
+
+def set_external_recovery_waiting(reason: str, remaining_s: float, context: str = ""):
+    global RECOVERY_WAITING, RECOVERY_WAITING_REASON, RECOVERY_WAITING_UNTIL, SERVICE_DETAIL
+    remaining_s = max(1.0, float(remaining_s))
+    if not RECOVERY_WAITING:
+        logging.warning("External recovery threshold reached but cooldown is active: waiting %.0fs before request (reason=%s context=%s)", remaining_s, reason, context)
+    elif CFG.get("verbose", False):
+        logging.debug("External recovery waiting still active: remaining=%.0fs reason=%s context=%s", remaining_s, reason, context)
+    RECOVERY_WAITING = True
+    RECOVERY_WAITING_REASON = reason
+    RECOVERY_WAITING_UNTIL = time.time() + remaining_s
+    SERVICE_DETAIL = f"external recovery waiting: {reason} ({remaining_s:.0f}s cooldown)"
+    publish_recovery_status()
+    publish_service_status()
+    publish_bridge_status()
+
+
+def note_klf_runtime_failure(exc: Exception, context: str = "runtime"):
+    global LAST_KLF_ERROR, KLF_STATE, KLF_REFUSED_COUNT, SERVICE_STATE, SERVICE_DETAIL
+    klf_state, err_text = classify_klf_error(exc)
+    if klf_state not in KLF_RECOVERY_TRIGGER_STATES:
+        klf_state = "klf_unreachable"
+    KLF_STATE = klf_state
+    LAST_KLF_ERROR = err_text
+    SERVICE_STATE = "running"
+    SERVICE_DETAIL = f"KLF runtime failure: {context}"
+
+    if RECOVERY_REQUESTED or RECOVERY_WAITING:
+        if CFG.get("verbose", False):
+            logging.debug("KLF runtime failure ignored because external recovery is already requested/waiting: context=%s state=%s error=%s", context, klf_state, err_text)
+        publish_recovery_status()
+        publish_service_status()
+        publish_bridge_status()
+        return
+
+    weight = _runtime_failure_weight(context)
+    KLF_REFUSED_COUNT += weight
+    logging.warning("KLF runtime failure counted: context=%s state=%s count=%d threshold=%s weight=%d error=%s", context, klf_state, KLF_REFUSED_COUNT, CFG["external_recovery_threshold"], weight, err_text)
+    publish_recovery_status()
+
+    recovery_enabled = _cfg_bool(CFG.get("external_recovery_enabled", False), False)
+    recovery_threshold = int(CFG["external_recovery_threshold"])
+    cooldown_remaining = _external_recovery_cooldown_remaining()
+    if KLF_REFUSED_COUNT >= recovery_threshold:
+        if not recovery_enabled:
+            logging.warning("Recovery threshold reached but external recovery is disabled: count=%d threshold=%d last=%s topic=%s context=%s", KLF_REFUSED_COUNT, recovery_threshold, klf_state, CFG["external_recovery_topic"], context)
+        elif cooldown_remaining > 0:
+            set_external_recovery_waiting(klf_state, cooldown_remaining, context)
+        else:
+            logging.warning("Requesting external recovery after %d weighted KLF runtime failures (last=%s context=%s)", KLF_REFUSED_COUNT, klf_state, context)
+            request_external_recovery(klf_state)
+
     publish_service_status()
     publish_bridge_status()
 
@@ -2359,54 +2483,43 @@ async def on_node_update(node):
 # ============================================================
 async def safe_set_position(device, value: int, name: str, st: dict):
     node_label = st.get("topic_id") or name
-
     v = scale_to_device(value)
     if v is None:
         logging.warning("safe_set_position: invalid value for %s: %s", node_label, value)
-        mqtt_publish(
-            f"{CFG['root_topic']}/{name}/set/ack",
-            f"ERROR:INVALID:{value}",
-            qos=1,
-            retain=False,
-        )
+        mqtt_publish(f"{CFG['root_topic']}/{name}/set/ack", f"ERROR:INVALID:{value}", qos=1, retain=False)
         return False
 
+    last_exc: Optional[Exception] = None
     try:
         await device.set_position(v, wait_for_completion=False)
-
+        note_klf_runtime_success(f"command:{node_label}:set_position")
         if CFG.get("verbose", False):
-            logging.debug(
-                "safe_set_position ok for %s: requested=%s device=%s",
-                node_label,
-                value,
-                v,
-            )
+            logging.debug("safe_set_position ok for %s: requested=%s device=%s", node_label, value, v)
         else:
             logging.info("%s command ok: set_position %s", node_label, value)
-
         return True
-
-    except Exception:
+    except Exception as exc:
+        last_exc = exc
         if CFG.get("verbose", False):
             logging.exception("safe_set_position failed for %s", node_label)
         else:
             logging.error("%s command failed: set_position %s", node_label, value)
 
-    # Fallback for boundary values
     try:
         if value == 0:
             await device.open(wait_for_completion=False)
+            note_klf_runtime_success(f"command:{node_label}:OPEN")
             if not CFG.get("verbose", False):
                 logging.info("%s command ok: OPEN", node_label)
             return True
-
         if value == 100:
             await device.close(wait_for_completion=False)
+            note_klf_runtime_success(f"command:{node_label}:CLOSE")
             if not CFG.get("verbose", False):
                 logging.info("%s command ok: CLOSE", node_label)
             return True
-
-    except Exception:
+    except Exception as exc:
+        last_exc = exc
         if CFG.get("verbose", False):
             logging.exception("safe_set_position fallback failed for %s", node_label)
         else:
@@ -2417,12 +2530,9 @@ async def safe_set_position(device, value: int, name: str, st: dict):
             else:
                 logging.error("%s command failed: fallback for %s", node_label, value)
 
-    mqtt_publish(
-        f"{CFG['root_topic']}/{name}/set/ack",
-        f"ERROR:{value}",
-        qos=1,
-        retain=False,
-    )
+    if last_exc is not None:
+        note_klf_runtime_failure(last_exc, f"command:{node_label}:set_position:{value}")
+    mqtt_publish(f"{CFG['root_topic']}/{name}/set/ack", f"ERROR:{value}", qos=1, retain=False)
     return False
 
 
@@ -2515,6 +2625,41 @@ async def recovery_clear_monitor_task():
             return
         except Exception:
             logging.exception("recovery_clear_monitor_task failed")
+
+
+async def recovery_waiting_monitor_task():
+    """Triggers external recovery automatically after cooldown expires if the KLF is still not connected."""
+    global RECOVERY_WAITING, RECOVERY_WAITING_REASON, RECOVERY_WAITING_UNTIL, SERVICE_DETAIL, KLF_REFUSED_COUNT
+    while True:
+        try:
+            await asyncio.sleep(5)
+            if not RECOVERY_WAITING:
+                continue
+            if KLF_STATE == "klf_connected":
+                logging.ok("External recovery waiting cleared: KLF connected before cooldown elapsed")
+                RECOVERY_WAITING = False
+                RECOVERY_WAITING_REASON = None
+                RECOVERY_WAITING_UNTIL = None
+                KLF_REFUSED_COUNT = 0
+                if SERVICE_DETAIL and str(SERVICE_DETAIL).startswith("external recovery waiting:"):
+                    SERVICE_DETAIL = None
+                publish_recovery_status()
+                publish_service_status()
+                publish_bridge_status()
+                continue
+            if RECOVERY_WAITING_UNTIL is None:
+                RECOVERY_WAITING_UNTIL = time.time() + _external_recovery_cooldown_remaining()
+                publish_recovery_status()
+                continue
+            if time.time() < RECOVERY_WAITING_UNTIL:
+                continue
+            reason = RECOVERY_WAITING_REASON or KLF_STATE or "klf_disconnected"
+            logging.warning("External recovery cooldown elapsed; requesting recovery now: reason=%s state=%s", reason, KLF_STATE)
+            request_external_recovery(reason)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logging.exception("recovery_waiting_monitor_task failed")
 
 
 async def preventive_recovery_task():
@@ -2662,6 +2807,7 @@ async def main():
             asyncio.create_task(poll_rain_sensors()),
             asyncio.create_task(preventive_recovery_task()),
             asyncio.create_task(recovery_clear_monitor_task()),
+            asyncio.create_task(recovery_waiting_monitor_task()),
             asyncio.create_task(event_stale_monitor_task()),
         ]
 
