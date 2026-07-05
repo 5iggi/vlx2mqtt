@@ -87,6 +87,8 @@ Typische Konfigurationsdatei:
 Beispiel:
 
 ```ini
+[vlx2mqtt]
+
 # KLF200
 klf_host = VELUX-KLF.fritz.box
 klf_pw = KLF_WiFi_PASSWORT
