@@ -788,6 +788,7 @@ $template->param(
 my $plugintitle  = 'VLX2MQTT KLF200 Bridge';
 my $helplink     = $doc_link;
 my $helptemplate = 'help.html';
+our $htmlhead = "<link rel=\"stylesheet\" href=\"/plugins/vlx2mqtt/css/vlx2mqtt.css?v=20260705_3\">\n";
 
 LoxBerry::Web::lbheader($plugintitle, $helplink, $helptemplate);
 print $template->output();

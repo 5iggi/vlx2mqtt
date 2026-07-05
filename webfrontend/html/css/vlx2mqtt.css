@@ -1,0 +1,697 @@
+
+/*
+ * VLX2MQTT Webfrontend CSS
+ * Version: 1.0.1 20260705-1905
+ *
+ * Ziel:
+ * - Noch näher am LoxBerry-v4-Components-Look für Buttons, Cards und Panels
+ * - Button-Varianten: normal, primary/save, danger/stop
+ * - Hintergrund der Cards bewusst neutral/transparent-nah statt schwerer Box
+ * - Hero optisch als Headerbereich mit feiner border-bottom-Logik
+ * - Weiterhin kompatibel mit LoxBerry v3/v4 im jQuery-Mobile-Modus
+ */
+
+:root {
+  --vlx-primary: var(--lb-color-primary, var(--loxberry-color-primary, var(--color-primary, #6dac20)));
+  --vlx-primary-hover: var(--lb-color-primary-hover, var(--loxberry-color-primary-hover, #5a931c));
+  --vlx-primary-active: var(--lb-color-primary-active, #4c7d18);
+
+  --vlx-danger: var(--lb-color-danger, #dc3545);
+  --vlx-danger-hover: var(--lb-color-danger-hover, #c82333);
+  --vlx-danger-active: #b21f2d;
+
+  --vlx-text: var(--lb-color-text, var(--color-text, #202124));
+  --vlx-muted: var(--lb-color-text-muted, var(--color-text-muted, #5f6368));
+  --vlx-page-bg: var(--lb-color-page-bg, transparent);
+  --vlx-surface: var(--lb-color-surface, transparent);
+  --vlx-surface-card: var(--lb-color-surface, transparent);
+  --vlx-surface-soft: var(--lb-color-surface-muted, #f8f9fa);
+  --vlx-border: var(--lb-color-border, #d8dce0);
+  --vlx-border-soft: #6dac20;
+  --vlx-border-strong: var(--lb-color-border-strong, #9aa0a6);
+  --vlx-focus: var(--lb-color-focus, var(--vlx-primary));
+
+  --vlx-btn-bg: #ffffff;
+  --vlx-btn-bg-hover: #dcdcdc;
+  --vlx-btn-border: #c0c0c0;
+  --vlx-btn-border-hover: #dcdcd
+
+  --vlx-radius-sm: var(--lb-radius-sm, 6px);
+  --vlx-radius-md: var(--lb-radius-md, 4px);
+  --vlx-radius-lg: var(--lb-radius-lg, 4px);
+  --vlx-control-height: 40px;
+  --vlx-control-width: 360px;
+  --vlx-control-narrow-width: 112px;
+  --vlx-help-width: 18px;
+
+  --vlx-shadow-card: none;
+  --vlx-shadow-soft: 0 1px 2px rgba(0,0,0,.05);
+  --vlx-shadow-inset: inset 0 1px 2px rgba(0,0,0,.05);
+  --vlx-shadow-focus: 0 0 0 3px rgba(109,172,32,.24);
+}
+
+/* -------------------------------------------------------------------------
+   Grundlayout / Cards näher an LB4: weniger Box, sauberer Rahmen
+   ------------------------------------------------------------------------- */
+.vlx-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  color: var(--vlx-text);
+  background: var(--vlx-page-bg);
+}
+
+.vlx-card {
+  border-radius: var(--vlx-radius-lg);
+  padding: 14px;
+  margin: 0 0 1em 0;
+  background: var(--vlx-surface-card);
+  box-shadow: var(--vlx-shadow-card);
+}
+
+.vlx-card.vlx-hero {
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 2px solid var(--vlx-border-soft);
+  padding: 10px 0 14px 0;
+}
+
+.vlx-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-direction: row-reverse;
+}
+
+.vlx-hero-text { flex: 1 1 340px; min-width: 0; }
+.vlx-hero-logo { flex: 0 0 auto; margin-left: auto; text-align: right; }
+.vlx-hero-logo img { display: block; width: 112px; max-width: 100%; height: auto; }
+.vlx-muted { color: var(--vlx-muted); font-size: .95em; }
+.vlx-small { color: var(--vlx-muted); font-size: .9em; }
+
+.vlx-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+  gap: 14px 20px;
+  max-width: 980px;
+  align-items: start;
+}
+
+.vlx-grid-full { grid-column: 1 / -1; }
+.vlx-stack { display: flex; flex-direction: column; gap: 14px; max-width: calc(var(--vlx-control-width) + 32px); }
+
+.help-inline { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.help-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #3f51b5;
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+  top: -1px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.16);
+}
+
+/* -------------------------------------------------------------------------
+   Inputs: jQM Wrapper neutralisieren
+   ------------------------------------------------------------------------- */
+.vlx-field .ui-input-text,
+.vlx-field .ui-input-search {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  width: 100% !important;
+  max-width: var(--vlx-control-width) !important;
+  box-sizing: border-box !important;
+}
+
+.vlx-field.vlx-narrow .ui-input-text,
+.vlx-field.vlx-narrow .ui-input-search {
+  width: var(--vlx-control-narrow-width) !important;
+  max-width: var(--vlx-control-narrow-width) !important;
+}
+
+.vlx-field input[type="text"],
+.vlx-field input[type="password"],
+.vlx-field .ui-input-text input,
+.vlx-field .ui-input-search input {
+  display: block !important;
+  width: 100% !important;
+  max-width: var(--vlx-control-width) !important;
+  min-height: var(--vlx-control-height) !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 8px 10px !important;
+  border: 1px solid var(--vlx-border-strong) !important;
+  border-radius: var(--vlx-radius-md) !important;
+  background: #fff !important;
+  color: var(--vlx-text) !important;
+  text-shadow: none !important;
+  box-shadow: var(--vlx-shadow-inset) !important;
+  -webkit-box-shadow: var(--vlx-shadow-inset) !important;
+  outline: none !important;
+  transition: border-color .12s ease, box-shadow .12s ease, background-color .12s ease;
+}
+
+.vlx-field.vlx-narrow input[type="text"],
+.vlx-field.vlx-narrow .ui-input-text input,
+.vlx-field.vlx-narrow .ui-input-search input,
+#mqtt_port,
+#initial_delay,
+#connect_timeout,
+#moving_timeout,
+#backoff_max,
+#rain_poll_interval,
+#rain_read_timeout,
+#event_monitor_interval,
+#event_stale_warn_seconds,
+#external_recovery_threshold,
+#runtime_recovery_command_weight,
+#runtime_recovery_rain_weight,
+#external_recovery_cooldown,
+#external_recovery_grace,
+#preventive_recovery_hours {
+  width: var(--vlx-control-narrow-width) !important;
+  max-width: var(--vlx-control-narrow-width) !important;
+}
+
+.vlx-field input[type="text"]:focus,
+.vlx-field input[type="password"]:focus,
+.vlx-field .ui-input-text input:focus,
+.vlx-field .ui-input-search input:focus {
+  border-color: var(--vlx-focus) !important;
+  box-shadow: var(--vlx-shadow-focus), var(--vlx-shadow-inset) !important;
+  -webkit-box-shadow: var(--vlx-shadow-focus), var(--vlx-shadow-inset) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Select / Topic Identifier
+   ------------------------------------------------------------------------- */
+.vlx-control-fixed { width: 100%; max-width: calc(var(--vlx-control-width) + 32px); }
+
+.vlx-control-fixed select,
+.vlx-control-fixed .ui-select,
+.vlx-control-fixed .ui-select .ui-btn,
+.vlx-control-fixed .ui-btn {
+  width: var(--vlx-control-width) !important;
+  max-width: var(--vlx-control-width) !important;
+  min-height: var(--vlx-control-height) !important;
+  box-sizing: border-box !important;
+  font-weight: normal;
+}
+
+.vlx-control-fixed .ui-select { margin: 0 !important; }
+
+.vlx-control-fixed .ui-select .ui-btn,
+.vlx-field .ui-select .ui-btn {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 42px 8px 12px !important;
+  border-radius: var(--vlx-radius-md) !important;
+  border: 1px solid var(--vlx-btn-border) !important;
+  background: var(--vlx-btn-bg) !important;
+  color: var(--vlx-text) !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  transition: background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+
+.vlx-control-fixed .ui-select .ui-btn:hover,
+.vlx-field .ui-select .ui-btn:hover {
+  background: var(--vlx-btn-bg-hover) !important;
+  border-color: var(--vlx-btn-border-hover) !important;
+}
+
+.vlx-control-fixed .ui-select .ui-btn:after,
+.vlx-field .ui-select .ui-btn:after,
+.vlx-control-fixed .ui-btn-icon-right:after,
+.vlx-field .ui-btn-icon-right:after {
+  display: none !important;
+  opacity: 0 !important;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.vlx-control-fixed .ui-select .ui-btn::before,
+.vlx-field .ui-select .ui-btn::before {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #7b828c;
+  border-bottom: 2px solid #7b828c;
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+
+/* -------------------------------------------------------------------------
+   Checkboxen
+   ------------------------------------------------------------------------- */
+.vlx-checkbox-field { width: 100%; max-width: calc(var(--vlx-control-width) + 32px); }
+
+.vlx-checkrow {
+  display: grid !important;
+  grid-template-columns: var(--vlx-control-width) var(--vlx-help-width) !important;
+  align-items: center !important;
+  justify-content: start !important;
+  column-gap: 8px !important;
+  width: auto !important;
+  max-width: calc(var(--vlx-control-width) + 32px) !important;
+  min-height: var(--vlx-control-height);
+}
+
+.vlx-checkrow > .help-tip {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  align-self: center !important;
+  justify-self: start !important;
+  margin: 0 !important;
+  top: 0 !important;
+}
+
+.vlx-checkrow > label,
+.vlx-checkrow > .ui-checkbox,
+.vlx-checkrow .ui-checkbox {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  width: var(--vlx-control-width) !important;
+  max-width: var(--vlx-control-width) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+}
+
+.vlx-checkrow .ui-checkbox input[type="checkbox"] {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+}
+
+.vlx-checkrow .ui-checkbox label,
+.vlx-checkrow .ui-checkbox .ui-btn,
+.vlx-checkrow > label {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  width: var(--vlx-control-width) !important;
+  max-width: var(--vlx-control-width) !important;
+  min-height: var(--vlx-control-height) !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 8px 12px 8px 42px !important;
+  border: 1px solid var(--vlx-btn-border) !important;
+  border-radius: var(--vlx-radius-md) !important;
+  background: var(--vlx-btn-bg) !important;
+  color: var(--vlx-text) !important;
+  text-shadow: none !important;
+  white-space: normal !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  transition: background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+  font-weight: normal;
+}
+
+.vlx-checkrow .ui-checkbox label:hover,
+.vlx-checkrow .ui-checkbox .ui-btn:hover,
+.vlx-checkrow > label:hover {
+  background: var(--vlx-btn-bg-hover) !important;
+  border-color: var(--vlx-btn-border-hover) !important;
+}
+
+.vlx-checkrow .ui-checkbox .ui-btn:before,
+.vlx-checkrow > label:before {
+  content: "" !important;
+  position: absolute !important;
+  left: 12px !important;
+  top: 50% !important;
+  width: 18px !important;
+  height: 18px !important;
+  transform: translateY(-50%) !important;
+  border: 1px solid var(--vlx-border-strong) !important;
+  border-radius: 4px !important;
+  background: #fff !important;
+  box-sizing: border-box !important;
+  box-shadow: var(--vlx-shadow-inset) !important;
+}
+
+.vlx-checkrow .ui-checkbox .ui-btn:after,
+.vlx-checkrow > label:after {
+  content: "" !important;
+  position: absolute !important;
+  left: 18px !important;
+  top: 50% !important;
+  width: 5px !important;
+  height: 10px !important;
+  margin: 0 !important;
+  background: none !important;
+  border: solid #fff !important;
+  border-width: 0 2px 2px 0 !important;
+  border-radius: 0 !important;
+  transform: translateY(-62%) rotate(45deg) !important;
+  opacity: 0 !important;
+  box-shadow: none !important;
+}
+
+.vlx-checkrow .ui-checkbox .ui-checkbox-on:before,
+.vlx-checkrow .ui-checkbox .ui-btn-active:before,
+.vlx-checkrow > label:has(input[type="checkbox"]:checked):before {
+  background: var(--vlx-primary) !important;
+  border-color: var(--vlx-primary-hover) !important;
+}
+
+.vlx-checkrow .ui-checkbox .ui-checkbox-on:after,
+.vlx-checkrow .ui-checkbox .ui-btn-active:after,
+.vlx-checkrow > label:has(input[type="checkbox"]:checked):after { opacity: 1 !important; }
+.vlx-checkrow .ui-checkbox .ui-btn-icon-left:after,
+.vlx-checkrow .ui-checkbox .ui-btn-icon-right:after { background-image: none !important; }
+
+/* -------------------------------------------------------------------------
+   Buttons: ähnlich LoxBerry v4 components.css
+   ------------------------------------------------------------------------- */
+.vlx-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 .5em 0;
+}
+
+.lb-btn,
+a.lb-btn,
+a.lb-btn:visited,
+a.lb-btn:link,
+button.lb-btn,
+input[type="button"].lb-btn,
+input[type="submit"].lb-btn,
+.ui-link.lb-btn,
+.vlx-button,
+a.vlx-button,
+a.vlx-button:visited,
+a.vlx-button:link,
+button.vlx-button,
+input[type="button"].vlx-button,
+input[type="submit"].vlx-button,
+.ui-link.vlx-button,
+.vlx-button.ui-btn,
+a.vlx-button.ui-btn,
+button.vlx-button.ui-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  min-height: var(--vlx-control-height) !important;
+  padding: 9px 15px !important;
+  border: 1px solid var(--vlx-btn-border) !important;
+  border-radius: var(--vlx-radius-md) !important;
+  background: var(--vlx-btn-bg) !important;
+  color: var(--vlx-text) !important;
+  font-weight: normal;
+  line-height: 1.25 !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  cursor: pointer !important;
+  box-sizing: border-box !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  transition: background-color .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease, transform .04s ease;
+}
+
+.lb-btn:hover,
+a.lb-btn:hover,
+button.lb-btn:hover,
+input[type="button"].lb-btn:hover,
+input[type="submit"].lb-btn:hover,
+.ui-link.lb-btn:hover,
+.vlx-button:hover,
+a.vlx-button:hover,
+button.vlx-button:hover,
+input[type="button"].vlx-button:hover,
+input[type="submit"].vlx-button:hover,
+.ui-link.vlx-button:hover,
+.vlx-button.ui-btn:hover {
+  background: var(--vlx-btn-bg-hover) !important;
+  border-color: var(--vlx-btn-border-hover);
+  color: var(--vlx-text);
+}
+
+.lb-btn:active,
+button.lb-btn:active,
+input[type="button"].lb-btn:active,
+input[type="submit"].lb-btn:active,
+.vlx-button:active,
+button.vlx-button:active,
+input[type="button"].vlx-button:active,
+input[type="submit"].vlx-button:active,
+.vlx-button.ui-btn:active {
+  transform: translateY(1px);
+  background: var(--vlx-btn-bg-active) !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.12) !important;
+}
+
+.lb-btn:focus-visible,
+button.lb-btn:focus-visible,
+input[type="button"].lb-btn:focus-visible,
+input[type="submit"].lb-btn:focus-visible,
+.vlx-button:focus-visible,
+button.vlx-button:focus-visible,
+input[type="button"].vlx-button:focus-visible,
+input[type="submit"].vlx-button:focus-visible,
+.vlx-button.ui-btn:focus-visible {
+  outline: none !important;
+  box-shadow: var(--vlx-shadow-focus) !important;
+}
+
+/* Primary / Speichern */
+.lb-btn-primary,
+a.lb-btn-primary,
+a.lb-btn-primary:visited,
+a.lb-btn-primary:link,
+button.lb-btn-primary,
+input[type="submit"].lb-btn-primary,
+.ui-link.lb-btn-primary,
+.vlx-button-primary,
+a.vlx-button-primary,
+a.vlx-button-primary:visited,
+a.vlx-button-primary:link,
+button.vlx-button-primary,
+input[type="submit"].vlx-button-primary,
+.ui-link.vlx-button-primary,
+.vlx-button-primary.ui-btn,
+button.vlx-button-primary.ui-btn,
+a.vlx-button-primary.ui-btn {
+  background: var(--vlx-primary) !important;
+  border-color: var(--vlx-primary-hover) !important;
+  color: #fff !important;
+  text-shadow: none !important;
+}
+
+.lb-btn-primary:hover,
+a.lb-btn-primary:hover,
+button.lb-btn-primary:hover,
+input[type="submit"].lb-btn-primary:hover,
+.ui-link.lb-btn-primary:hover,
+.vlx-button-primary:hover,
+a.vlx-button-primary:hover,
+button.vlx-button-primary:hover,
+input[type="submit"].vlx-button-primary:hover,
+.ui-link.vlx-button-primary:hover,
+.vlx-button-primary.ui-btn:hover {
+  background: var(--vlx-primary-hover) !important;
+  border-color: var(--vlx-primary-active) !important;
+  color: #fff !important;
+}
+
+.lb-btn-primary:active,
+button.lb-btn-primary:active,
+input[type="submit"].lb-btn-primary:active,
+.vlx-button-primary:active,
+button.vlx-button-primary:active,
+input[type="submit"].vlx-button-primary:active,
+.vlx-button-primary.ui-btn:active {
+  background: var(--vlx-primary-active) !important;
+}
+
+/* Danger / Stop */
+.lb-btn-danger,
+a.lb-btn-danger,
+a.lb-btn-danger:visited,
+a.lb-btn-danger:link,
+button.lb-btn-danger,
+input[type="submit"].lb-btn-danger,
+.ui-link.lb-btn-danger,
+.vlx-button-danger,
+a.vlx-button-danger,
+a.vlx-button-danger:visited,
+a.vlx-button-danger:link,
+button.vlx-button-danger,
+.vlx-button-danger.ui-btn {
+  background: var(--vlx-danger-bg) !important;
+  border-color: var(--vlx-danger-border) !important;
+  color: #8a1f28 !important;
+  text-shadow: none !important;
+}
+
+.lb-btn-danger:hover,
+a.lb-btn-danger:hover,
+button.lb-btn-danger:hover,
+input[type="submit"].lb-btn-danger:hover,
+.ui-link.lb-btn-danger:hover,
+.vlx-button-danger:hover,
+a.vlx-button-danger:hover,
+button.vlx-button-danger:hover,
+.vlx-button-danger.ui-btn:hover {
+  background: #ffe9e9 !important;
+  border-color: var(--vlx-danger-border) !important;
+  color: #8a1f28 !important;
+}
+
+.lb-btn-danger:active,
+button.lb-btn-danger:active,
+input[type="submit"].lb-btn-danger:active,
+.vlx-button-danger:active,
+button.vlx-button-danger:active,
+.vlx-button-danger.ui-btn:active {
+  background: #ffdede !important;
+  border-color: #bd2130 !important;
+}
+
+.lb-btn:disabled,
+button.lb-btn:disabled,
+input[type="submit"].lb-btn:disabled,
+.vlx-button:disabled,
+button.vlx-button:disabled,
+input[type="submit"].vlx-button:disabled,
+.vlx-button.ui-state-disabled,
+.vlx-button.ui-disabled {
+  opacity: .65 !important;
+  cursor: not-allowed !important;
+}
+
+/* -------------------------------------------------------------------------
+   Panels / Collapsibles / Notices
+   ------------------------------------------------------------------------- */
+.vlx-service-status { width: 100%; text-align: center; margin: 2px 0 .8em 0; }
+.notice-success,
+.notice-error,
+.notice-info {
+  border-radius: var(--vlx-radius-md);
+  padding: 10px 12px;
+  margin: 0 0 1em 0;
+}
+.notice-success { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
+.notice-error { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
+.notice-info { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+
+.vlx-collapsible { padding: 0; overflow: hidden; background: transparent; 
+  border: 1px solid var(--vlx-border);
+  border-radius: var(--vlx-radius-lg);
+}
+.vlx-collapsible summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px;
+  font-size: 1.08em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.vlx-collapsible summary::-webkit-details-marker { display: none; }
+.vlx-collapsible summary::after { content: "▸"; font-size: 1.1em; color: var(--vlx-muted); }
+.vlx-collapsible[open] summary { border-bottom: 2px solid var(--vlx-border-soft); background: transparent; }
+.vlx-collapsible[open] summary::after { content: "▾"; }
+.vlx-panel-body { padding: 14px; }
+.vlx-panel-actions {
+  margin-top: 1em;
+  padding-top: .8em;
+  display: flex;
+  justify-content: flex-start;
+}
+.vlx-panel-actions .vlx-button-primary { width: 100%; }
+
+.vlx-export-links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: .6em 0; }
+.vlx-export-info { font-size: .9em; color: var(--vlx-muted); margin: .4em 0 .8em 0; }
+.vlx-text2value { margin-top: .7em; border: 1px solid var(--vlx-border); border-radius: var(--vlx-radius-md); padding: 8px 10px; background: transparent; }
+.vlx-text2value summary { cursor: pointer; font-weight: bold; padding: 0; }
+.vlx-text2value pre { white-space: pre-wrap; user-select: all; background: #f7f7f7; border: 1px solid var(--vlx-border); padding: 8px; border-radius: var(--vlx-radius-sm); }
+
+@media (max-width: 900px) {
+  .vlx-grid-2 { grid-template-columns: 1fr; }
+  .vlx-field .ui-input-text,
+  .vlx-field .ui-input-search,
+  .vlx-field input[type="text"],
+  .vlx-field input[type="password"],
+  .vlx-field select,
+  .vlx-checkbox-field,
+  .vlx-checkrow,
+  .vlx-control-fixed {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  .vlx-field.vlx-narrow .ui-input-text,
+  .vlx-field.vlx-narrow .ui-input-search,
+  .vlx-field.vlx-narrow input[type="text"],
+  .vlx-field.vlx-narrow .ui-input-text input,
+  .vlx-field.vlx-narrow .ui-input-search input,
+  #mqtt_port,
+  #initial_delay,
+  #connect_timeout,
+  #moving_timeout,
+  #backoff_max,
+  #rain_poll_interval,
+  #rain_read_timeout,
+  #event_monitor_interval,
+  #event_stale_warn_seconds,
+  #external_recovery_threshold,
+  #runtime_recovery_command_weight,
+  #runtime_recovery_rain_weight,
+  #external_recovery_cooldown,
+  #external_recovery_grace,
+  #preventive_recovery_hours {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .vlx-control-fixed select,
+  .vlx-control-fixed .ui-select,
+  .vlx-control-fixed .ui-select .ui-btn,
+  .vlx-control-fixed .ui-btn { width: 100% !important; max-width: 100% !important; }
+  .vlx-checkrow { grid-template-columns: minmax(0, 1fr) var(--vlx-help-width) !important; width: 100% !important; max-width: 100% !important; }
+  .vlx-checkrow > label,
+  .vlx-checkrow > .ui-checkbox,
+  .vlx-checkrow .ui-checkbox,
+  .vlx-checkrow .ui-checkbox label,
+  .vlx-checkrow .ui-checkbox .ui-btn { width: 100% !important; max-width: 100% !important; }
+  .vlx-hero { align-items: flex-start; }
+  .vlx-hero-logo { width: 100%; margin-left: 0; text-align: right; }
+  .vlx-hero-logo img { width: 72px; }
+}

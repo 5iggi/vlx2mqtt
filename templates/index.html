@@ -1,502 +1,111 @@
-<style>
-.help-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-.help-tip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #3f51b5;
-  color: #fff;
-  font-size: 12px;
-  font-weight: bold;
-  line-height: 1;
-  cursor: help;
-  position: relative;
-  top: -3px;
-}
-.ui-input-text {
-  width: fit-content;
-}
-#rain_poll_interval,
-#rain_read_timeout {
-  width: 80px;
-}
-#event_monitor_interval,
-#event_stale_warn_seconds,
-#runtime_recovery_command_weight,
-#runtime_recovery_rain_weight {
-  width: 80px;
-}
-.vlx-card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 12px;
-  margin: 0 0 1em 0;
-}
-.vlx-card h1,
-.vlx-card h2,
-.vlx-card h3 {
-  margin-top: 0;
-}
-.vlx-muted {
-  color: #666;
-  font-size: 0.95em;
-}
-.notice-success,
-.notice-error,
-.notice-info {
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin: 0 0 1em 0;
-}
-.notice-success { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
-.notice-error   { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
-.notice-info    { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
-.vlx-grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  max-width: 980px;
-}
-.vlx-linkbox {
-  display: inline-block;
-  padding: 10px 14px;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
-  background: #f7f7f7;
-  text-decoration: none;
-  color: #6dac20 !important;
-}
 
-.vlx-hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  flex-direction: row-reverse;
-}
-.vlx-hero-text {
-  flex: 1 1 320px;
-  min-width: 0;
-}
-.vlx-hero-logo {
-  flex: 0 0 auto;
-  margin-left: auto;
-  text-align: right;
-}
-.vlx-hero-logo img {
-  display: block;
-  width: 128px;
-  max-width: 100%;
-  height: auto;
-}
-@media (max-width: 900px) {
-  .vlx-grid-2 {
-    grid-template-columns: 1fr;
-  }
-  .vlx-hero {
-    align-items: flex-start;
-  }
-  .vlx-hero-logo {
-    width: 100%;
-    margin-left: 0;
-    text-align: right;
-  }
-  .vlx-hero-logo img {
-    width: 72px;
-  }
-}
-.ui-checkbox .ui-btn {
-  display: inline-block !important;
-  width: 300px !important;
-  box-sizing: border-box !important;
-}
-#topic_identifier-button {
-  width: 240px !important;
-}
-
-/* Loxone Config export */
-.vlx-export-links { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:.6em 0; }
-.vlx-export-links a { min-width:88px; text-align:center; }
-.vlx-export-info { font-size:.9em; color:#555; margin:.4em 0 .6em 0; }
-.vlx-text2value { margin-top:.7em; border:1px solid #ddd; border-radius:6px; padding:8px 10px; background:#fff; }
-.vlx-text2value summary { cursor:pointer; /* font-weight:bold; */ }
-.vlx-text2value pre { white-space:pre-wrap; user-select:all; background:#f7f7f7; border:1px solid #ddd; padding:8px; border-radius:4px; }
-.vlx-service-status { width:100%; text-align:center; margin-top:2px; }
-
-</style>
-
+<div class="vlx-page">
 <form method="post" action="index.cgi">
-  <div style="display:flex; align-items:center; justify-content:center; width:100%; margin-bottom:.2em; gap:10px; flex-wrap:wrap;">
-<a style="width:60px;"
-       href="javascript:restartService();"
-       id="btnrestart"
-       data-role="button"
-       data-inline="true"
-       data-icon="refresh"
-       data-mini="true"
-       data-transition="flow"><TMPL_VAR UI.RESTART></a>
-    <a style="width:60px;"
-       href="javascript:stopService();"
-       id="btnstop"
-       data-role="button"
-       data-inline="true"
-       data-icon="delete"
-       data-mini="true"
-       data-transition="flow"><TMPL_VAR UI.STOP></a>
-    <a style="width:110px;"
-       id="btnshwlog"
-       data-icon="info"
-       data-role="button"
-       data-mini="true"
-       target="log"
-       href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template"><TMPL_VAR UI.SHOW_LOG></a>
+  <div class="vlx-actions">
+    <a href="javascript:restartService();" id="btnrestart" class="vlx-button"><i class="pi pi-refresh"></i><span><TMPL_VAR UI.RESTART></span></a>
+    <a href="javascript:stopService();" id="btnstop" class="vlx-button vlx-button-danger"><i class="pi pi-stop"></i><span><TMPL_VAR UI.STOP></span></a>
+    <a id="btnshwlog" class="vlx-button" target="log" href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template"><i class="pi pi-file"></i><span><TMPL_VAR UI.SHOW_LOG></span></a>
   </div>
 
   <div class="vlx-service-status"><span id="servicestate"><TMPL_VAR UI.STATUS_LOADING></span></div>
-  <TMPL_IF NOTICE_VISIBLE>
-    <div class="<TMPL_VAR NOTICE_CLASS>"><TMPL_VAR NOTICE></div>
-  </TMPL_IF>
+  <TMPL_IF NOTICE_VISIBLE><div class="<TMPL_VAR NOTICE_CLASS>"><TMPL_VAR NOTICE></div></TMPL_IF>
 
   <div class="vlx-card vlx-hero">
     <div class="vlx-hero-text">
       <h2 style="margin:0 0 .3em 0;"><TMPL_VAR UI.PAGE_TITLE></h2>
-      <p class="vlx-muted" style="margin:0;">
-        <TMPL_VAR UI.PAGE_SUBTITLE>
-      </p>
+      <p class="vlx-muted" style="margin:0;"><TMPL_VAR UI.PAGE_SUBTITLE></p>
     </div>
-    <div class="vlx-hero-logo">
-      <img src="<TMPL_VAR ICON_SRC>" alt="VLX2MQTT Logo">
-    </div>
+    <div class="vlx-hero-logo"><img src="<TMPL_VAR ICON_SRC>" alt="VLX2MQTT Logo"></div>
   </div>
 
   <div class="vlx-card">
     <h3><TMPL_VAR UI.SECTION_BASIC></h3>
     <div class="vlx-grid-2">
-      <div>
-        <span class="help-inline">
-          <label for="klf_host"><strong><TMPL_VAR UI.KLF_HOST></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.KLF_HOST>">?</span>
-        </span>
-        <input id="klf_host" type="text" name="klf_host" value="<TMPL_VAR klf_host>">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="klf_pw"><strong><TMPL_VAR UI.KLF_PW></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.KLF_PW>">?</span>
-        </span>
-        <input id="klf_pw" type="text" name="klf_pw" value="<TMPL_VAR klf_pw>">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="mqtt_host"><strong><TMPL_VAR UI.MQTT_HOST></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_HOST>">?</span>
-        </span>
-        <input id="mqtt_host" type="text" name="mqtt_host" value="<TMPL_VAR mqtt_host>">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="mqtt_port"><strong><TMPL_VAR UI.MQTT_PORT></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_PORT>">?</span>
-        </span>
-        <input id="mqtt_port" type="text" name="mqtt_port" value="<TMPL_VAR mqtt_port>">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="mqtt_user"><strong><TMPL_VAR UI.MQTT_USER></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_USER>">?</span>
-        </span>
-        <input id="mqtt_user" type="text" name="mqtt_user" value="<TMPL_VAR mqtt_user>">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="mqtt_pw"><strong><TMPL_VAR UI.MQTT_PW></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.MQTT_PW>">?</span>
-        </span>
-        <input id="mqtt_pw" type="text" name="mqtt_pw" value="<TMPL_VAR mqtt_pw>">
-      </div>
+      <div class="vlx-field"><span class="help-inline"><label for="klf_host"><strong><TMPL_VAR UI.KLF_HOST></strong></label><span class="help-tip" title="<TMPL_VAR HELP.KLF_HOST>">?</span></span><input id="klf_host" type="text" name="klf_host" value="<TMPL_VAR klf_host>"></div>
+      <div class="vlx-field"><span class="help-inline"><label for="klf_pw"><strong><TMPL_VAR UI.KLF_PW></strong></label><span class="help-tip" title="<TMPL_VAR HELP.KLF_PW>">?</span></span><input id="klf_pw" type="text" name="klf_pw" value="<TMPL_VAR klf_pw>"></div>
+      <div class="vlx-field"><span class="help-inline"><label for="mqtt_host"><strong><TMPL_VAR UI.MQTT_HOST></strong></label><span class="help-tip" title="<TMPL_VAR HELP.MQTT_HOST>">?</span></span><input id="mqtt_host" type="text" name="mqtt_host" value="<TMPL_VAR mqtt_host>"></div>
+      <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="mqtt_port"><strong><TMPL_VAR UI.MQTT_PORT></strong></label><span class="help-tip" title="<TMPL_VAR HELP.MQTT_PORT>">?</span></span><input id="mqtt_port" type="text" name="mqtt_port" value="<TMPL_VAR mqtt_port>"></div>
+      <div class="vlx-field"><span class="help-inline"><label for="mqtt_user"><strong><TMPL_VAR UI.MQTT_USER></strong></label><span class="help-tip" title="<TMPL_VAR HELP.MQTT_USER>">?</span></span><input id="mqtt_user" type="text" name="mqtt_user" value="<TMPL_VAR mqtt_user>"></div>
+      <div class="vlx-field"><span class="help-inline"><label for="mqtt_pw"><strong><TMPL_VAR UI.MQTT_PW></strong></label><span class="help-tip" title="<TMPL_VAR HELP.MQTT_PW>">?</span></span><input id="mqtt_pw" type="text" name="mqtt_pw" value="<TMPL_VAR mqtt_pw>"></div>
+      <div class="vlx-field"><span class="help-inline"><label for="root_topic"><strong><TMPL_VAR UI.ROOT_TOPIC></strong></label><span class="help-tip" title="<TMPL_VAR HELP.ROOT_TOPIC>">?</span></span><input id="root_topic" type="text" name="root_topic" value="<TMPL_VAR root_topic>"></div>
     </div>
+    <p style="margin-top:1em;"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></p>
   </div>
 
-  <div class="vlx-card">
-    <h3><TMPL_VAR UI.SECTION_ADVANCED></h3>
-    <p>
-      <span class="help-inline">
-        <label for="root_topic"><strong><TMPL_VAR UI.ROOT_TOPIC></strong></label>
-        <span class="help-tip" title="<TMPL_VAR HELP.ROOT_TOPIC>">?</span>
-      </span>
-      <input id="root_topic" type="text" name="root_topic" value="<TMPL_VAR root_topic>">
-    </p>
-
-    <div class="vlx-grid-2">
-      <div>
-        <span class="help-inline">
-          <label for="initial_delay"><strong><TMPL_VAR UI.INITIAL_DELAY></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.INITIAL_DELAY>">?</span>
-        </span>
-        <input id="initial_delay" type="text" name="initial_delay" value="<TMPL_VAR initial_delay>" style="width:80px;">
+  <details class="vlx-card vlx-collapsible">
+    <summary><span><i class="pi pi-cog"></i> <TMPL_VAR UI.SECTION_ADVANCED></span></summary>
+    <div class="vlx-panel-body">
+      <div class="vlx-grid-2">
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="initial_delay"><strong><TMPL_VAR UI.INITIAL_DELAY></strong></label><span class="help-tip" title="<TMPL_VAR HELP.INITIAL_DELAY>">?</span></span><input id="initial_delay" type="text" name="initial_delay" value="<TMPL_VAR initial_delay>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="connect_timeout"><strong><TMPL_VAR UI.CONNECT_TIMEOUT></strong></label><span class="help-tip" title="<TMPL_VAR HELP.CONNECT_TIMEOUT>">?</span></span><input id="connect_timeout" type="text" name="connect_timeout" value="<TMPL_VAR connect_timeout>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="moving_timeout"><strong><TMPL_VAR UI.MOVING_TIMEOUT></strong></label><span class="help-tip" title="<TMPL_VAR HELP.MOVING_TIMEOUT>">?</span></span><input id="moving_timeout" type="text" name="moving_timeout" value="<TMPL_VAR moving_timeout>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="backoff_max"><strong><TMPL_VAR UI.BACKOFF_MAX></strong></label><span class="help-tip" title="<TMPL_VAR HELP.BACKOFF_MAX>">?</span></span><input id="backoff_max" type="text" name="backoff_max" value="<TMPL_VAR backoff_max>"></div>
+        <div class="vlx-field vlx-grid-full">
+          <div class="vlx-stack">
+            <div class="vlx-control-fixed"><span class="help-inline"><label for="topic_identifier"><strong><TMPL_VAR UI.TOPIC_IDENTIFIER></strong></label><span class="help-tip" title="<TMPL_VAR HELP.TOPIC_IDENTIFIER>">?</span></span><select id="topic_identifier" name="topic_identifier"><option value="name" <TMPL_VAR topic_identifier_name_selected>>name</option><option value="node_id" <TMPL_VAR topic_identifier_node_id_selected>>node_id</option></select></div>
+            <div class="vlx-checkbox-field"><div class="vlx-checkrow"><label for="debug_verbose"><input id="debug_verbose" type="checkbox" name="debug_verbose" value="1" <TMPL_VAR debug_verbose_checked>> <TMPL_VAR UI.VERBOSE_LOGGING></label><span class="help-tip" title="<TMPL_VAR HELP.VERBOSE_LOGGING>">?</span></div></div>
+          </div>
+        </div>
       </div>
-      <div>
-        <span class="help-inline">
-          <label for="connect_timeout"><strong><TMPL_VAR UI.CONNECT_TIMEOUT></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.CONNECT_TIMEOUT>">?</span>
-        </span>
-        <input id="connect_timeout" type="text" name="connect_timeout" value="<TMPL_VAR connect_timeout>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="moving_timeout"><strong><TMPL_VAR UI.MOVING_TIMEOUT></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.MOVING_TIMEOUT>">?</span>
-        </span>
-        <input id="moving_timeout" type="text" name="moving_timeout" value="<TMPL_VAR moving_timeout>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="backoff_max"><strong><TMPL_VAR UI.BACKOFF_MAX></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.BACKOFF_MAX>">?</span>
-        </span>
-        <input id="backoff_max" type="text" name="backoff_max" value="<TMPL_VAR backoff_max>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="topic_identifier"><strong><TMPL_VAR UI.TOPIC_IDENTIFIER></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.TOPIC_IDENTIFIER>">?</span>
-        </span>
-        <select id="topic_identifier" name="topic_identifier">
-          <option value="name" <TMPL_VAR topic_identifier_name_selected>>name</option>
-          <option value="node_id" <TMPL_VAR topic_identifier_node_id_selected>>node_id</option>
-        </select>
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="rain_poll_interval"><strong><TMPL_VAR UI.RAIN_POLL_INTERVAL></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.RAIN_POLL_INTERVAL>">?</span>
-        </span>
-        <input id="rain_poll_interval" type="text" name="rain_poll_interval" value="<TMPL_VAR rain_poll_interval>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="rain_read_timeout"><strong><TMPL_VAR UI.RAIN_READ_TIMEOUT></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.RAIN_READ_TIMEOUT>">?</span>
-        </span>
-        <input id="rain_read_timeout" type="text" name="rain_read_timeout" value="<TMPL_VAR rain_read_timeout>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="event_monitor_interval"><strong><TMPL_VAR UI.EVENT_MONITOR_INTERVAL></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.EVENT_MONITOR_INTERVAL>">?</span>
-        </span>
-        <input id="event_monitor_interval" type="text" name="event_monitor_interval" value="<TMPL_VAR event_monitor_interval>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="event_stale_warn_seconds"><strong><TMPL_VAR UI.EVENT_STALE_WARN_SECONDS></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.EVENT_STALE_WARN_SECONDS>">?</span>
-        </span>
-        <input id="event_stale_warn_seconds" type="text" name="event_stale_warn_seconds" value="<TMPL_VAR event_stale_warn_seconds>" style="width:80px;">
-      </div>
+      <div class="vlx-panel-actions"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
     </div>
+  </details>
 
-    <p class="vlx-muted" style="margin-top:.8em;"><TMPL_VAR UI.EVENT_MONITOR_NOTE></p>
+  <details class="vlx-card vlx-collapsible">
+    <summary><span><i class="pi pi-cloud"></i> <TMPL_VAR UI.SECTION_RAIN_EVENT></span></summary>
+    <div class="vlx-panel-body">
+      <p class="vlx-muted"><TMPL_VAR UI.EVENT_MONITOR_NOTE></p>
+      <div class="vlx-grid-2">
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="rain_poll_interval"><strong><TMPL_VAR UI.RAIN_POLL_INTERVAL></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RAIN_POLL_INTERVAL>">?</span></span><input id="rain_poll_interval" type="text" name="rain_poll_interval" value="<TMPL_VAR rain_poll_interval>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="rain_read_timeout"><strong><TMPL_VAR UI.RAIN_READ_TIMEOUT></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RAIN_READ_TIMEOUT>">?</span></span><input id="rain_read_timeout" type="text" name="rain_read_timeout" value="<TMPL_VAR rain_read_timeout>"></div>
 
-    <p>
-      <span class="help-inline">
-        <label for="debug_verbose">
-          <input id="debug_verbose" type="checkbox" name="debug_verbose" value="1" <TMPL_VAR debug_verbose_checked>>
-          <TMPL_VAR UI.VERBOSE_LOGGING>
-        </label>
-        <span class="help-tip" title="<TMPL_VAR HELP.VERBOSE_LOGGING>">?</span>
-      </span>
-    </p>
-    <p>
-      <span class="help-inline">
-        <label for="publish_rain_raw_limit">
-          <input id="publish_rain_raw_limit" type="checkbox" name="publish_rain_raw_limit" value="1" <TMPL_VAR publish_rain_raw_limit_checked>>
-          <TMPL_VAR UI.PUBLISH_RAIN_RAW_LIMIT>
-        </label>
-        <span class="help-tip" title="<TMPL_VAR HELP.PUBLISH_RAIN_RAW_LIMIT>">?</span>
-      </span>
-    </p>
-    <p>
-      <span class="help-inline">
-        <label for="rain_skip_during_recovery">
-          <input id="rain_skip_during_recovery" type="checkbox" name="rain_skip_during_recovery" value="1" <TMPL_VAR rain_skip_during_recovery_checked>>
-          <TMPL_VAR UI.RAIN_SKIP_DURING_RECOVERY>
-        </label>
-        <span class="help-tip" title="<TMPL_VAR HELP.RAIN_SKIP_DURING_RECOVERY>">?</span>
-      </span>
-    </p>
-    <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
-  </div>
+        <div class="vlx-field vlx-grid-full">
+          <div class="vlx-stack">
+            <div class="vlx-checkbox-field"><div class="vlx-checkrow"><label for="publish_rain_raw_limit"><input id="publish_rain_raw_limit" type="checkbox" name="publish_rain_raw_limit" value="1" <TMPL_VAR publish_rain_raw_limit_checked>> <TMPL_VAR UI.PUBLISH_RAIN_RAW_LIMIT></label><span class="help-tip" title="<TMPL_VAR HELP.PUBLISH_RAIN_RAW_LIMIT>">?</span></div></div>
+            <div class="vlx-checkbox-field"><div class="vlx-checkrow"><label for="rain_skip_during_recovery"><input id="rain_skip_during_recovery" type="checkbox" name="rain_skip_during_recovery" value="1" <TMPL_VAR rain_skip_during_recovery_checked>> <TMPL_VAR UI.RAIN_SKIP_DURING_RECOVERY></label><span class="help-tip" title="<TMPL_VAR HELP.RAIN_SKIP_DURING_RECOVERY>">?</span></div></div>
+          </div>
+        </div>
 
-  <div class="vlx-card">
-    <h3><TMPL_VAR UI.SECTION_RECOVERY></h3>
-    <p>
-      <span class="help-inline">
-        <label for="external_recovery_enabled">
-          <input id="external_recovery_enabled" type="checkbox" name="external_recovery_enabled" value="1" <TMPL_VAR external_recovery_enabled_checked>>
-          <TMPL_VAR UI.ENABLE_EXTERNAL_RECOVERY>
-        </label>
-        <span class="help-tip" title="<TMPL_VAR HELP.ENABLE_EXTERNAL_RECOVERY>">?</span>
-      </span>
-    </p>
-
-    <div class="vlx-grid-2">
-      <div>
-        <span class="help-inline">
-          <label for="external_recovery_threshold"><strong><TMPL_VAR UI.RECOVERY_THRESHOLD></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_THRESHOLD>">?</span>
-        </span>
-        <input id="external_recovery_threshold" type="text" name="external_recovery_threshold" value="<TMPL_VAR external_recovery_threshold>" style="width:80px;">
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="event_monitor_interval"><strong><TMPL_VAR UI.EVENT_MONITOR_INTERVAL></strong></label><span class="help-tip" title="<TMPL_VAR HELP.EVENT_MONITOR_INTERVAL>">?</span></span><input id="event_monitor_interval" type="text" name="event_monitor_interval" value="<TMPL_VAR event_monitor_interval>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="event_stale_warn_seconds"><strong><TMPL_VAR UI.EVENT_STALE_WARN_SECONDS></strong></label><span class="help-tip" title="<TMPL_VAR HELP.EVENT_STALE_WARN_SECONDS>">?</span></span><input id="event_stale_warn_seconds" type="text" name="event_stale_warn_seconds" value="<TMPL_VAR event_stale_warn_seconds>"></div>
       </div>
-      <div>
-        <span class="help-inline">
-          <label for="runtime_recovery_command_weight"><strong><TMPL_VAR UI.RUNTIME_RECOVERY_COMMAND_WEIGHT></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.RUNTIME_RECOVERY_COMMAND_WEIGHT>">?</span>
-        </span>
-        <input id="runtime_recovery_command_weight" type="text" name="runtime_recovery_command_weight" value="<TMPL_VAR runtime_recovery_command_weight>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="runtime_recovery_rain_weight"><strong><TMPL_VAR UI.RUNTIME_RECOVERY_RAIN_WEIGHT></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.RUNTIME_RECOVERY_RAIN_WEIGHT>">?</span>
-        </span>
-        <input id="runtime_recovery_rain_weight" type="text" name="runtime_recovery_rain_weight" value="<TMPL_VAR runtime_recovery_rain_weight>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="external_recovery_cooldown"><strong><TMPL_VAR UI.RECOVERY_COOLDOWN></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_COOLDOWN>">?</span>
-        </span>
-        <input id="external_recovery_cooldown" type="text" name="external_recovery_cooldown" value="<TMPL_VAR external_recovery_cooldown>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="external_recovery_grace"><strong><TMPL_VAR UI.RECOVERY_GRACE></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_GRACE>">?</span>
-        </span>
-        <input id="external_recovery_grace" type="text" name="external_recovery_grace" value="<TMPL_VAR external_recovery_grace>" style="width:80px;">
-      </div>
-      <div>
-        <span class="help-inline">
-          <label for="preventive_recovery_hours"><strong><TMPL_VAR UI.PREVENTIVE_RECOVERY></strong></label>
-          <span class="help-tip" title="<TMPL_VAR HELP.PREVENTIVE_RECOVERY>">?</span>
-        </span>
-        <input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>" style="width:80px;">
-      </div>
+      <div class="vlx-panel-actions"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
     </div>
-  </div>
+  </details>
 
-  <div class="vlx-card">
-    <h3><TMPL_VAR UI.SECTION_LOXONE_EXPORT></h3>
-    <p class="vlx-muted"><TMPL_VAR UI.LOXONE_EXPORT_NOTE></p>
-    <p class="vlx-export-info">
-      Host: <strong><TMPL_VAR LBOX_EXPORT_HOST></strong> ·
-      VIU: <strong><TMPL_VAR LBOX_VIU_PORT></strong> ·
-      VO: <strong><TMPL_VAR LBOX_VO_PORT></strong> ·
-      Root: <strong><TMPL_VAR LBOX_ROOT_TOPIC></strong> ·
-      Identifier: <strong><TMPL_VAR LBOX_TOPIC_IDENTIFIER></strong>
-    </p>
-    <div class="vlx-export-links">
-      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_viu"><TMPL_VAR UI.DOWNLOAD_VIU></a>
-      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_vo"><TMPL_VAR UI.DOWNLOAD_VO></a>
-      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_readme"><TMPL_VAR UI.DOWNLOAD_README></a>
-      <a class="ui-link ui-btn ui-icon-arrow-d ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini" data-ajax="false" href="index.cgi?download=loxone_zip"><TMPL_VAR UI.DOWNLOAD_ZIP></a>
-    </div>
-    <details class="vlx-text2value">
-      <summary><TMPL_VAR UI.LOXONE_MINI_GUIDE_TITLE></summary>
-      <div class="vlx-muted">
-        <p><strong><TMPL_VAR UI.LOXONE_MINI_GUIDE_XML_TITLE></strong></p>
-        <ul>
-          <li><TMPL_VAR UI.LOXONE_MINI_GUIDE_XML_VIU></li>
-          <li><TMPL_VAR UI.LOXONE_MINI_GUIDE_XML_VO></li>
-          <li><TMPL_VAR UI.LOXONE_MINI_GUIDE_ZIP></li>
-        </ul>
-        <p><strong><TMPL_VAR UI.LOXONE_MINI_GUIDE_STATUS_TITLE></strong></p>
-        <ul>
-          <li><code>status_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_STATUS_CODE></li>
-          <li><code>status_detail_code</code> / <code>status_live_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_KLF_CODE></li>
-          <li><code>service_status_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_SERVICE_CODE></li>
-          <li><code>recovery/state_code</code>: <TMPL_VAR UI.LOXONE_MINI_GUIDE_RECOVERY_CODE></li>
-        </ul>
-        <p><TMPL_VAR UI.LOXONE_MINI_GUIDE_README></p>
+  <details class="vlx-card vlx-collapsible">
+    <summary><span><i class="pi pi-bolt"></i> <TMPL_VAR UI.SECTION_RECOVERY></span></summary>
+    <div class="vlx-panel-body">
+      <div class="vlx-grid-2">
+        <div class="vlx-field vlx-grid-full vlx-checkbox-field"><div class="vlx-checkrow"><label for="external_recovery_enabled"><input id="external_recovery_enabled" type="checkbox" name="external_recovery_enabled" value="1" <TMPL_VAR external_recovery_enabled_checked>> <TMPL_VAR UI.ENABLE_EXTERNAL_RECOVERY></label><span class="help-tip" title="<TMPL_VAR HELP.ENABLE_EXTERNAL_RECOVERY>">?</span></div></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="external_recovery_threshold"><strong><TMPL_VAR UI.RECOVERY_THRESHOLD></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_THRESHOLD>">?</span></span><input id="external_recovery_threshold" type="text" name="external_recovery_threshold" value="<TMPL_VAR external_recovery_threshold>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="runtime_recovery_command_weight"><strong><TMPL_VAR UI.RUNTIME_RECOVERY_COMMAND_WEIGHT></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RUNTIME_RECOVERY_COMMAND_WEIGHT>">?</span></span><input id="runtime_recovery_command_weight" type="text" name="runtime_recovery_command_weight" value="<TMPL_VAR runtime_recovery_command_weight>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="runtime_recovery_rain_weight"><strong><TMPL_VAR UI.RUNTIME_RECOVERY_RAIN_WEIGHT></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RUNTIME_RECOVERY_RAIN_WEIGHT>">?</span></span><input id="runtime_recovery_rain_weight" type="text" name="runtime_recovery_rain_weight" value="<TMPL_VAR runtime_recovery_rain_weight>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="external_recovery_cooldown"><strong><TMPL_VAR UI.RECOVERY_COOLDOWN></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_COOLDOWN>">?</span></span><input id="external_recovery_cooldown" type="text" name="external_recovery_cooldown" value="<TMPL_VAR external_recovery_cooldown>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="external_recovery_grace"><strong><TMPL_VAR UI.RECOVERY_GRACE></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_GRACE>">?</span></span><input id="external_recovery_grace" type="text" name="external_recovery_grace" value="<TMPL_VAR external_recovery_grace>"></div>
+        <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="preventive_recovery_hours"><strong><TMPL_VAR UI.PREVENTIVE_RECOVERY></strong></label><span class="help-tip" title="<TMPL_VAR HELP.PREVENTIVE_RECOVERY>">?</span></span><input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>"></div>
       </div>
-    </details>
-  </div>
+      <div class="vlx-panel-actions"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
+    </div>
+  </details>
 
-  <div class="vlx-card">
-    <h3><TMPL_VAR UI.SECTION_DOCUMENTATION></h3>
-    <p class="vlx-muted"><TMPL_VAR UI.DOCUMENTATION_TEXT></p>
-    <a class="vlx-linkbox" href="<TMPL_VAR DOC_LINK>" target="_blank" rel="noopener noreferrer"><TMPL_VAR UI.OPEN_DOCUMENTATION></a>
-  </div>
+  <details class="vlx-card vlx-collapsible"><summary><span><i class="pi pi-download"></i> <TMPL_VAR UI.SECTION_LOXONE_EXPORT></span></summary>
+    <div class="vlx-panel-body"><p class="vlx-muted"><TMPL_VAR UI.LOXONE_EXPORT_NOTE></p><div class="vlx-export-info">Host: <code><TMPL_VAR LBOX_EXPORT_HOST></code> · VIU: <code><TMPL_VAR LBOX_VIU_PORT></code> · VO: <code><TMPL_VAR LBOX_VO_PORT></code> · Root: <code><TMPL_VAR LBOX_ROOT_TOPIC></code> · Identifier: <code><TMPL_VAR LBOX_TOPIC_IDENTIFIER></code></div><div class="vlx-export-links"><a class="vlx-button" href="index.cgi?download=loxone_viu"><i class="pi pi-download"></i><TMPL_VAR UI.DOWNLOAD_VIU></a><a class="vlx-button" href="index.cgi?download=loxone_vo"><i class="pi pi-download"></i><TMPL_VAR UI.DOWNLOAD_VO></a><a class="vlx-button" href="index.cgi?download=loxone_readme"><i class="pi pi-file"></i><TMPL_VAR UI.DOWNLOAD_README></a><a class="vlx-button" href="index.cgi?download=loxone_zip"><i class="pi pi-box"></i><TMPL_VAR UI.DOWNLOAD_ZIP></a></div></div>
+  </details>
 
-  <div style="text-align:left; margin-top:3px;">
-    <button style="width:210px;"
-            type="submit"
-            name="save"
-            value="Save"
-            class="ui-btn ui-icon-check ui-btn-icon-left ui-btn-inline ui-shadow ui-corner-all ui-mini"><TMPL_VAR UI.SAVE></button>
-  </div>
+  <details class="vlx-card vlx-collapsible"><summary><span><i class="pi pi-question-circle"></i> <TMPL_VAR UI.SECTION_DOCUMENTATION></span></summary><div class="vlx-panel-body"><p class="vlx-muted"><TMPL_VAR UI.DOCUMENTATION_TEXT></p><a class="vlx-button" href="<TMPL_VAR DOC_LINK>" target="_blank"><i class="pi pi-external-link"></i><TMPL_VAR UI.OPEN_DOCUMENTATION></a></div></details>
+
+  <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
 </form>
+</div>
 
 <script>
-const I18N = {
-  serviceError: '<TMPL_VAR UI.SERVICE_ERROR>',
-  restarting: '<TMPL_VAR UI.RESTARTING>',
-  restartFailed: '<TMPL_VAR UI.RESTART_FAILED>',
-  stopping: '<TMPL_VAR UI.STOPPING>',
-  stopFailed: '<TMPL_VAR UI.STOP_FAILED>',
-  unknown: '<TMPL_VAR UI.UNKNOWN>'
-};
-
-function setServiceState(msg, color, pid, klfStatus) {
-  document.getElementById('servicestate').innerHTML =
-    '<span style="color:' + color + '">' +
-      msg + ' | PID: ' + (pid || '-') + ' | KLF: ' + (klfStatus || I18N.unknown) +
-    '</span>';
-}
-
-function postAjax(body) {
-  return fetch('index.cgi', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body
-  }).then(r => r.json());
-}
-
-function loadServiceStatus() {
-  postAjax('ajax=statusvlx')
-    .then(d => {
-      let color = 'gray';
-      if (d.state === 'active') color = 'green';
-      if (d.error) color = 'red';
-      setServiceState(d.message || d.state || I18N.unknown, color, d.pid, d.klf_status);
-    })
-    .catch(() => setServiceState(I18N.serviceError, 'red', '-', I18N.unknown));
-}
-
-function restartService() {
-  setServiceState(I18N.restarting, 'blue', '…', I18N.unknown);
-  postAjax('ajax=restartvlx')
-    .then(() => setTimeout(loadServiceStatus, 1500))
-    .catch(() => setServiceState(I18N.restartFailed, 'red', '-', I18N.unknown));
-}
-
-function stopService() {
-  setServiceState(I18N.stopping, 'orange', '…', I18N.unknown);
-  postAjax('ajax=stopvlx')
-    .then(() => setTimeout(loadServiceStatus, 1000))
-    .catch(() => setServiceState(I18N.stopFailed, 'red', '-', I18N.unknown));
-}
-
+const I18N = { serviceError: '<TMPL_VAR UI.SERVICE_ERROR>', restarting: '<TMPL_VAR UI.RESTARTING>', restartFailed: '<TMPL_VAR UI.RESTART_FAILED>', stopping: '<TMPL_VAR UI.STOPPING>', stopFailed: '<TMPL_VAR UI.STOP_FAILED>', unknown: '<TMPL_VAR UI.UNKNOWN>' };
+function setServiceState(msg, color, pid, klfStatus) { document.getElementById('servicestate').innerHTML = '<span style="color:' + color + '">' + msg + ' | PID: ' + (pid || '-') + ' | KLF: ' + (klfStatus || I18N.unknown) + '</span>'; }
+function postAjax(body) { return fetch('index.cgi', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body }).then(r => r.json()); }
+function loadServiceStatus() { postAjax('ajax=statusvlx').then(d => { let color = 'gray'; if (d.state === 'active') color = 'green'; if (d.error) color = 'red'; setServiceState(d.message || d.state || I18N.unknown, color, d.pid, d.klf_status); }).catch(() => setServiceState(I18N.serviceError, 'red', '-', I18N.unknown)); }
+function restartService() { setServiceState(I18N.restarting, 'blue', '…', I18N.unknown); postAjax('ajax=restartvlx').then(() => setTimeout(loadServiceStatus, 1500)).catch(() => setServiceState(I18N.restartFailed, 'red', '-', I18N.unknown)); }
+function stopService() { setServiceState(I18N.stopping, 'orange', '…', I18N.unknown); postAjax('ajax=stopvlx').then(() => setTimeout(loadServiceStatus, 1000)).catch(() => setServiceState(I18N.stopFailed, 'red', '-', I18N.unknown)); }
 setInterval(loadServiceStatus, 5000);
 document.addEventListener('DOMContentLoaded', loadServiceStatus);
 </script>
