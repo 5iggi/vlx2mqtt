@@ -24,7 +24,8 @@
 .ui-input-text {
   width: fit-content;
 }
-#rain_poll_interval {
+#rain_poll_interval,
+#rain_read_timeout {
   width: 80px;
 }
 #event_monitor_interval,
@@ -283,6 +284,13 @@
       </div>
       <div>
         <span class="help-inline">
+          <label for="rain_read_timeout"><strong><TMPL_VAR UI.RAIN_READ_TIMEOUT></strong></label>
+          <span class="help-tip" title="<TMPL_VAR HELP.RAIN_READ_TIMEOUT>">?</span>
+        </span>
+        <input id="rain_read_timeout" type="text" name="rain_read_timeout" value="<TMPL_VAR rain_read_timeout>" style="width:80px;">
+      </div>
+      <div>
+        <span class="help-inline">
           <label for="event_monitor_interval"><strong><TMPL_VAR UI.EVENT_MONITOR_INTERVAL></strong></label>
           <span class="help-tip" title="<TMPL_VAR HELP.EVENT_MONITOR_INTERVAL>">?</span>
         </span>
@@ -315,6 +323,15 @@
           <TMPL_VAR UI.PUBLISH_RAIN_RAW_LIMIT>
         </label>
         <span class="help-tip" title="<TMPL_VAR HELP.PUBLISH_RAIN_RAW_LIMIT>">?</span>
+      </span>
+    </p>
+    <p>
+      <span class="help-inline">
+        <label for="rain_skip_during_recovery">
+          <input id="rain_skip_during_recovery" type="checkbox" name="rain_skip_during_recovery" value="1" <TMPL_VAR rain_skip_during_recovery_checked>>
+          <TMPL_VAR UI.RAIN_SKIP_DURING_RECOVERY>
+        </label>
+        <span class="help-tip" title="<TMPL_VAR HELP.RAIN_SKIP_DURING_RECOVERY>">?</span>
       </span>
     </p>
     <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
