@@ -104,7 +104,7 @@ const I18N = { serviceError: '<TMPL_VAR UI.SERVICE_ERROR>', restarting: '<TMPL_V
 function setServiceState(msg, color, pid, klfStatus) { document.getElementById('servicestate').innerHTML = '<span style="color:' + color + '">' + msg + ' | PID: ' + (pid || '-') + ' | KLF: ' + (klfStatus || I18N.unknown) + '</span>'; }
 function postAjax(body) { return fetch('index.cgi', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body }).then(r => r.json()); }
 function loadServiceStatus() { postAjax('ajax=statusvlx').then(d => { let color = 'gray'; if (d.state === 'active') color = 'green'; if (d.error) color = 'red'; setServiceState(d.message || d.state || I18N.unknown, color, d.pid, d.klf_status); }).catch(() => setServiceState(I18N.serviceError, 'red', '-', I18N.unknown)); }
-function restartService() { setServiceState(I18N.restarting, 'blue', '…', I18N.unknown); postAjax('ajax=restartvlx').then(() => setTimeout(loadServiceStatus, 1500)).catch(() => setServiceState(I18N.restartFailed, 'red', '-', I18N.unknown)); }
+function restartService() { setServiceState(I18N.restarting, 'orange', '…', I18N.unknown); postAjax('ajax=restartvlx').then(() => setTimeout(loadServiceStatus, 1500)).catch(() => setServiceState(I18N.restartFailed, 'red', '-', I18N.unknown)); }
 function stopService() { setServiceState(I18N.stopping, 'orange', '…', I18N.unknown); postAjax('ajax=stopvlx').then(() => setTimeout(loadServiceStatus, 1000)).catch(() => setServiceState(I18N.stopFailed, 'red', '-', I18N.unknown)); }
 setInterval(loadServiceStatus, 5000);
 document.addEventListener('DOMContentLoaded', loadServiceStatus);
