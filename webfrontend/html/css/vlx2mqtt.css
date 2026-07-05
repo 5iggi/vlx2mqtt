@@ -695,3 +695,4 @@ input[type="submit"].vlx-button:disabled,
   .vlx-hero-logo { width: 100%; margin-left: 0; text-align: right; }
   .vlx-hero-logo img { width: 72px; }
 }
+select#topic_identifier { text-align: center; }
