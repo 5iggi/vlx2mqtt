@@ -107,6 +107,8 @@ DEFAULT_CFG = {
     "preventive_recovery_hours": 0.0,
     "topic_identifier": "name",
     "rain_poll_interval": 300,
+    "rain_read_timeout": 15.0,
+    "rain_skip_during_recovery": True,
     "publish_rain_raw_limit": False,
     "event_monitor_interval": 60,
     "event_stale_warn_seconds": 900,
@@ -540,9 +542,53 @@ def find_node_by_identifier(identifier: str):
     return None
 
 
+def _compact_exception_text(exc: Exception) -> str:
+    """Short, single-line exception text for normal LoxBerry logs."""
+    try:
+        txt = str(exc).strip()
+    except Exception:
+        txt = ""
+    cls = type(exc).__name__
+    return f"{cls}: {txt}" if txt else cls
+
+
+def _is_known_klf_runtime_error(exc: Exception) -> bool:
+    """Known pyvlx/KLF runtime communication errors that should not spam tracebacks in normal logging."""
+    txt = _compact_exception_text(exc).lower()
+    return (
+        isinstance(exc, (PyVLXException, OSError, ConnectionAbortedError, TimeoutError, asyncio.TimeoutError))
+        or "unable to send command" in txt
+        or "connect call failed" in txt
+        or "ssl handshake" in txt
+        or "timed out" in txt
+        or "timeout" in txt
+    )
+
+
+def _log_known_klf_runtime_failure(message: str, *args, exc: Optional[Exception] = None) -> None:
+    """Log compact warnings unless verbose/debug logging is enabled."""
+    if CFG.get("verbose", False) and exc is not None:
+        logging.exception(message, *args)
+    else:
+        logging.warning(message, *args)
+
+
+def recovery_activity_state() -> Optional[str]:
+    if RECOVERY_REQUESTED:
+        return "requested"
+    if RECOVERY_WAITING:
+        return "waiting"
+    return None
+
+
+def should_skip_rain_poll_for_recovery() -> bool:
+    return _cfg_bool(CFG.get("rain_skip_during_recovery", True), True) and recovery_activity_state() is not None
 async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
     """
     Determine rain status indirectly via the opening limit.
+
+    The KLF/pyvlx API can hang for a long time during network/SSL problems.
+    Therefore a shorter, configurable timeout is applied around the limitation read.
     """
     node_name = getattr(node, "name", "")
 
@@ -578,34 +624,51 @@ async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
 
     retry_delays = (0.0, 0.6)
     last_exc: Optional[Exception] = None
+    try:
+        rain_timeout = max(1.0, float(CFG.get("rain_read_timeout", 15.0)))
+    except Exception:
+        rain_timeout = 15.0
 
     for attempt, delay in enumerate(retry_delays, start=1):
         try:
             if delay > 0:
                 await asyncio.sleep(delay)
-            result = await _read_once()
+            result = await asyncio.wait_for(_read_once(), timeout=rain_timeout)
             note_klf_runtime_success(f"rain_state:{node_name}")
             return result
         except PyVLXException as exc:
             last_exc = exc
-            if "Unable to send command" in str(exc):
+            if _is_known_klf_runtime_error(exc):
                 if attempt < len(retry_delays):
-                    logging.warning("read_rain_state transient send failure for %s (attempt %s/%s) - retrying", node_name, attempt, len(retry_delays))
+                    logging.warning(
+                        "read_rain_state transient KLF failure for %s (attempt %s/%s, timeout=%.0fs) - retrying: %s",
+                        node_name, attempt, len(retry_delays), rain_timeout, _compact_exception_text(exc),
+                    )
                     continue
-                logging.warning("read_rain_state failed for %s after retry: %s", node_name, exc)
+                logging.warning("read_rain_state failed for %s after retry: %s", node_name, _compact_exception_text(exc))
                 note_klf_runtime_failure(exc, f"rain_state:{node_name}")
                 return None, None
-            logging.exception("read_rain_state failed for %s", node_name)
+            _log_known_klf_runtime_failure("read_rain_state failed for %s", node_name, exc=exc)
             note_klf_runtime_failure(exc, f"rain_state:{node_name}")
             return None, None
         except Exception as exc:
             last_exc = exc
-            logging.exception("read_rain_state failed for %s", node_name)
+            if _is_known_klf_runtime_error(exc):
+                if attempt < len(retry_delays):
+                    logging.warning(
+                        "read_rain_state transient KLF failure for %s (attempt %s/%s, timeout=%.0fs) - retrying: %s",
+                        node_name, attempt, len(retry_delays), rain_timeout, _compact_exception_text(exc),
+                    )
+                    continue
+                logging.warning("read_rain_state failed for %s after retry: %s", node_name, _compact_exception_text(exc))
+                note_klf_runtime_failure(exc, f"rain_state:{node_name}")
+                return None, None
+            _log_known_klf_runtime_failure("read_rain_state failed for %s", node_name, exc=exc)
             note_klf_runtime_failure(exc, f"rain_state:{node_name}")
             return None, None
 
     if last_exc is not None:
-        logging.warning("read_rain_state failed for %s: %s", node_name, last_exc)
+        logging.warning("read_rain_state failed for %s: %s", node_name, _compact_exception_text(last_exc))
         note_klf_runtime_failure(last_exc, f"rain_state:{node_name}")
     return None, None
 
@@ -1957,6 +2020,11 @@ async def poll_rain_sensors_once():
     """Poll rain status once."""
     logging.debug("poll_rain_sensors_once: start")
 
+    recovery_state = recovery_activity_state()
+    if should_skip_rain_poll_for_recovery():
+        logging.info("rain poll skipped: external recovery %s", recovery_state)
+        return
+
     now = time.time()
 
     for node in getattr(pyvlx, "nodes", []):
@@ -2654,7 +2722,7 @@ async def recovery_waiting_monitor_task():
             if time.time() < RECOVERY_WAITING_UNTIL:
                 continue
             reason = RECOVERY_WAITING_REASON or KLF_STATE or "klf_disconnected"
-            logging.warning("External recovery cooldown elapsed; requesting recovery now: reason=%s state=%s", reason, KLF_STATE)
+            logging.warning("External recovery cooldown elapsed; requesting recovery now: waiting_reason=%s current_state=%s", reason, KLF_STATE)
             request_external_recovery(reason)
         except asyncio.CancelledError:
             return
