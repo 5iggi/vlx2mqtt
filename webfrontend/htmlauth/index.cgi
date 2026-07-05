@@ -45,6 +45,8 @@ my %DEFAULTS = (
     'vlx2mqtt.preventive_recovery_hours'   => '0',
     'vlx2mqtt.topic_identifier'            => 'name',
     'vlx2mqtt.rain_poll_interval'          => '300',
+    'vlx2mqtt.rain_read_timeout'           => '15.0',
+    'vlx2mqtt.rain_skip_during_recovery'   => '1',
     'vlx2mqtt.publish_rain_raw_limit'      => '0',
     'vlx2mqtt.event_monitor_interval'      => '60',
     'vlx2mqtt.event_stale_warn_seconds'    => '900',
@@ -92,16 +94,98 @@ sub load_cfg_hash {
     return \%cfg;
 }
 
+
+sub cfg_bool {
+    my ($v) = @_;
+    return 0 if !defined $v;
+    return 1 if $v =~ /^(?:1|true|yes|on)$/i;
+    return 0 if $v =~ /^(?:0|false|no|off)$/i;
+    return $v ? 1 : 0;
+}
+
+my @CFG_ORDER = (
+    '# KLF200',
+    'vlx2mqtt.klf_host',
+    'vlx2mqtt.klf_pw',
+
+    '# MQTT',
+    'vlx2mqtt.mqtt_host',
+    'vlx2mqtt.mqtt_port',
+    'vlx2mqtt.mqtt_user',
+    'vlx2mqtt.mqtt_pw',
+    'vlx2mqtt.root_topic',
+
+    '# Runtime',
+    'vlx2mqtt.initial_delay',
+    'vlx2mqtt.connect_timeout',
+    'vlx2mqtt.moving_timeout',
+    'vlx2mqtt.backoff_max',
+    'vlx2mqtt.verbose',
+    'vlx2mqtt.logfile',
+    'vlx2mqtt.topic_identifier',
+
+    '# Rain / Event Monitor',
+    'vlx2mqtt.rain_poll_interval',
+    'vlx2mqtt.rain_read_timeout',
+    'vlx2mqtt.rain_skip_during_recovery',
+    'vlx2mqtt.publish_rain_raw_limit',
+    'vlx2mqtt.event_monitor_interval',
+    'vlx2mqtt.event_stale_warn_seconds',
+
+    '# Recovery / Power-Cycle',
+    'vlx2mqtt.external_recovery_enabled',
+    'vlx2mqtt.external_recovery_threshold',
+    'vlx2mqtt.runtime_recovery_command_weight',
+    'vlx2mqtt.runtime_recovery_rain_weight',
+    'vlx2mqtt.external_recovery_cooldown',
+    'vlx2mqtt.external_recovery_grace',
+    'vlx2mqtt.external_recovery_topic',
+    'vlx2mqtt.preventive_recovery_hours',
+);
+
+my %CFG_BOOL_KEYS = map { $_ => 1 } qw(
+    vlx2mqtt.verbose
+    vlx2mqtt.publish_rain_raw_limit
+    vlx2mqtt.rain_skip_during_recovery
+    vlx2mqtt.external_recovery_enabled
+);
+
 sub save_cfg_hash {
     my ($file, $cfg) = @_;
     if ($file =~ m{^(.+)/[^/]+$}) {
         make_path($1) if !-d $1;
     }
-    my $cs = Config::Simple->new(syntax => 'ini');
-    for my $key (sort keys %{$cfg}) {
-        $cs->param($key, $cfg->{$key});
+
+    my %written;
+    open my $fh, '>:encoding(UTF-8)', $file or die "Cannot write config $file: $!";
+    print {$fh} "[vlx2mqtt]\n\n";
+
+    for my $entry (@CFG_ORDER) {
+        if ($entry =~ /^#\s*(.*)$/) {
+            print {$fh} "\n# $1\n";
+            next;
+        }
+        next if !exists $cfg->{$entry};
+        my $key = $entry;
+        $key =~ s/^vlx2mqtt\.//;
+        my $val = defined $cfg->{$entry} ? $cfg->{$entry} : '';
+        $val = cfg_bool($val) ? 'true' : 'false' if $CFG_BOOL_KEYS{$entry};
+        print {$fh} "$key = $val\n";
+        $written{$entry} = 1;
     }
-    $cs->write($file) or die "Cannot write config $file";
+
+    my @extra = sort grep { !$written{$_} } keys %{$cfg};
+    if (@extra) {
+        print {$fh} "\n# Other\n";
+        for my $entry (@extra) {
+            my $key = $entry;
+            $key =~ s/^vlx2mqtt\.//;
+            my $val = defined $cfg->{$entry} ? $cfg->{$entry} : '';
+            $val = cfg_bool($val) ? 'true' : 'false' if $CFG_BOOL_KEYS{$entry};
+            print {$fh} "$key = $val\n";
+        }
+    }
+    close $fh or die "Cannot close config $file: $!";
     chmod 0600, $file;
 }
 
@@ -465,6 +549,10 @@ sub validate_config {
     return 'CFG.INVALID_RAIN_POLL_INTERVAL'
         unless $cfg->{'vlx2mqtt.rain_poll_interval'} =~ /^\d+$/
             && $cfg->{'vlx2mqtt.rain_poll_interval'} >= 60;
+
+    return 'CFG.INVALID_RAIN_READ_TIMEOUT'
+        unless $cfg->{'vlx2mqtt.rain_read_timeout'} =~ /^\d+(?:\.\d+)?$/
+            && $cfg->{'vlx2mqtt.rain_read_timeout'} >= 1;
     return 'CFG.INVALID_EVENT_MONITOR_INTERVAL'
         unless $cfg->{'vlx2mqtt.event_monitor_interval'} =~ /^\d+$/
             && $cfg->{'vlx2mqtt.event_monitor_interval'} >= 30;
@@ -474,6 +562,14 @@ sub validate_config {
 
     return 'CFG.INVALID_RECOVERY_THRESHOLD'
         unless $cfg->{'vlx2mqtt.external_recovery_threshold'} =~ /^\d+$/;
+
+    return 'CFG.INVALID_RUNTIME_RECOVERY_COMMAND_WEIGHT'
+        unless $cfg->{'vlx2mqtt.runtime_recovery_command_weight'} =~ /^\d+$/
+            && $cfg->{'vlx2mqtt.runtime_recovery_command_weight'} >= 1;
+
+    return 'CFG.INVALID_RUNTIME_RECOVERY_RAIN_WEIGHT'
+        unless $cfg->{'vlx2mqtt.runtime_recovery_rain_weight'} =~ /^\d+$/
+            && $cfg->{'vlx2mqtt.runtime_recovery_rain_weight'} >= 1;
 
     return 'CFG.INVALID_RECOVERY_COOLDOWN'
         unless $cfg->{'vlx2mqtt.external_recovery_cooldown'} =~ /^\d+(?:\.\d+)?$/;
@@ -596,6 +692,8 @@ if ($cgi->param('save')) {
     $newcfg{'vlx2mqtt.logfile'} = trim($cgi->param('logfile')) || $default_logfile;
     $newcfg{'vlx2mqtt.topic_identifier'} = trim($cgi->param('topic_identifier')) || 'name';
     $newcfg{'vlx2mqtt.rain_poll_interval'} = trim($cgi->param('rain_poll_interval'));
+    $newcfg{'vlx2mqtt.rain_read_timeout'} = trim($cgi->param('rain_read_timeout')) || '15.0';
+    $newcfg{'vlx2mqtt.rain_skip_during_recovery'} = bool_param('rain_skip_during_recovery');
     $newcfg{'vlx2mqtt.publish_rain_raw_limit'} = bool_param('publish_rain_raw_limit');
     $newcfg{'vlx2mqtt.event_monitor_interval'} = trim($cgi->param('event_monitor_interval'));
     $newcfg{'vlx2mqtt.event_stale_warn_seconds'} = trim($cgi->param('event_stale_warn_seconds'));
@@ -612,6 +710,7 @@ if ($cgi->param('save')) {
     my $validation_error = validate_config(\%newcfg);
     if ($validation_error) {
         my %validation_fallback = (
+            'CFG.INVALID_RAIN_READ_TIMEOUT' => 'Rain read timeout must be a number >= 1 second',
             'CFG.INVALID_EVENT_MONITOR_INTERVAL' => 'Event monitor interval must be an integer >= 30 seconds',
             'CFG.INVALID_EVENT_STALE_WARN_SECONDS' => 'Event stale warning threshold must be an integer >= 60 seconds',
             'CFG.INVALID_RUNTIME_RECOVERY_COMMAND_WEIGHT' => 'Command runtime recovery weight must be an integer >= 1',
@@ -666,8 +765,8 @@ $template->param(
     moving_timeout                      => maybe_unmangle($cfg->{'vlx2mqtt.moving_timeout'}),
     backoff_max                         => maybe_unmangle($cfg->{'vlx2mqtt.backoff_max'}),
     logfile                             => maybe_unmangle($cfg->{'vlx2mqtt.logfile'}),
-    debug_verbose_checked               => ($cfg->{'vlx2mqtt.verbose'} ? 'checked' : ''),
-    external_recovery_enabled_checked   => ($cfg->{'vlx2mqtt.external_recovery_enabled'} ? 'checked' : ''),
+    debug_verbose_checked               => (cfg_bool($cfg->{'vlx2mqtt.verbose'}) ? 'checked' : ''),
+    external_recovery_enabled_checked   => (cfg_bool($cfg->{'vlx2mqtt.external_recovery_enabled'}) ? 'checked' : ''),
     external_recovery_threshold         => maybe_unmangle($cfg->{'vlx2mqtt.external_recovery_threshold'}),
     runtime_recovery_command_weight     => maybe_unmangle($cfg->{'vlx2mqtt.runtime_recovery_command_weight'} || '2'),
     runtime_recovery_rain_weight        => maybe_unmangle($cfg->{'vlx2mqtt.runtime_recovery_rain_weight'} || '1'),
@@ -678,7 +777,9 @@ $template->param(
     topic_identifier_name_selected      => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'name' ? 'selected' : ''),
     topic_identifier_node_id_selected   => (($cfg->{'vlx2mqtt.topic_identifier'} || 'name') eq 'node_id' ? 'selected' : ''),
     rain_poll_interval                  => maybe_unmangle($cfg->{'vlx2mqtt.rain_poll_interval'} || '300'),
-    publish_rain_raw_limit_checked      => ($cfg->{'vlx2mqtt.publish_rain_raw_limit'} ? 'checked' : ''),
+    rain_read_timeout                   => maybe_unmangle($cfg->{'vlx2mqtt.rain_read_timeout'} || '15.0'),
+    rain_skip_during_recovery_checked   => (cfg_bool($cfg->{'vlx2mqtt.rain_skip_during_recovery'}) ? 'checked' : ''),
+    publish_rain_raw_limit_checked      => (cfg_bool($cfg->{'vlx2mqtt.publish_rain_raw_limit'}) ? 'checked' : ''),
     event_monitor_interval             => maybe_unmangle($cfg->{'vlx2mqtt.event_monitor_interval'} || '60'),
     event_stale_warn_seconds            => maybe_unmangle($cfg->{'vlx2mqtt.event_stale_warn_seconds'} || '900'),
     ICON_SRC                            => get_plugin_icon(128) || '/system/images/icons/vlx2mqtt/icon.svg',
