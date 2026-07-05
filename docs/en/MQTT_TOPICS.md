@@ -196,6 +196,20 @@ vlx2mqtt/Fenster_links/set = STOP
 vlx2mqtt/Fenster_links/set = 65
 ```
 
+
+## Rain polling and log cleanup
+
+The indirect rain/limitation read also supports these configuration values:
+
+```ini
+rain_read_timeout = 15.0
+rain_skip_during_recovery = true
+```
+
+`rain_read_timeout` limits one KLF/pyvlx limitation read. Known KLF/network failures are logged in compact form with `verbose = 0`; full stack traces remain available with `verbose = 1`.
+
+If `rain_skip_during_recovery = true` is set, rain polling is skipped while `recovery/state=requested` or `recovery/state=waiting`.
+
 ## Recovery topics
 
 ```text

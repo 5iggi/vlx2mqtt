@@ -103,6 +103,8 @@ verbose = 0
 logfile = /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 topic_identifier = name
 rain_poll_interval = 300
+rain_read_timeout = 15.0
+rain_skip_during_recovery = true
 publish_rain_raw_limit = false
 event_monitor_interval = 60
 event_stale_warn_seconds = 900
@@ -134,6 +136,8 @@ preventive_recovery_hours = 0
 | `logfile` | Pfad zur Logdatei |
 | `topic_identifier` | MQTT-Identifier pro Node: `name` oder `node_id` |
 | `rain_poll_interval` | Polling-Intervall für indirekten Regenstatus in Sekunden |
+| `rain_read_timeout` | Timeout je Regen-/Limitation-Abfrage; verhindert lange KLF-/SSL-Hänger im normalen Log |
+| `rain_skip_during_recovery` | Überspringt Rain-Polling während `recovery/state=requested` oder `waiting` |
 | `publish_rain_raw_limit` | Veröffentlicht zusätzlich `rain_raw_limit` |
 | `event_monitor_interval` | Diagnoseintervall zur Prüfung von KLF-Node-Events |
 | `event_stale_warn_seconds` | Warnschwelle, wenn keine KLF-Node-Events eintreffen |
@@ -151,7 +155,7 @@ Die LoxBerry-Weboberfläche bietet:
 - KLF-Konfiguration
 - MQTT-Konfiguration
 - Topic-Identifier-Auswahl
-- Regen-Polling-Einstellungen
+- Regen-Polling-Einstellungen inkl. `rain_read_timeout` und Recovery-Skip
 - Recovery-Einstellungen
 - Event-Monitor-Diagnose
 - Servicefunktionen: Restart, Stop, Log anzeigen
@@ -240,7 +244,7 @@ ZIP                alles zusammen
 
 ## Regenstatus
 
-Für unterstützte Fenster kann VLX2MQTT einen indirekten Regenstatus veröffentlichen.
+Für unterstützte Fenster kann VLX2MQTT einen indirekten Regenstatus veröffentlichen. Die Abfrage nutzt `rain_read_timeout`, damit eine hängende KLF-/SSL-Verbindung nicht lange blockiert. Während einer externen Recovery (`requested` oder `waiting`) kann Rain-Polling mit `rain_skip_during_recovery = true` pausiert werden.
 
 ```text
 <root_topic>/<node>/rain
@@ -248,6 +252,9 @@ Für unterstützte Fenster kann VLX2MQTT einen indirekten Regenstatus veröffent
 ```
 
 ## Logging
+
+Bei `verbose = 0` werden bekannte KLF-/pyvlx-Netzwerkfehler kompakt geloggt. Vollständige Stacktraces bleiben bei `verbose = 1` verfügbar.
+
 
 ```text
 /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log

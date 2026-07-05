@@ -89,6 +89,25 @@ VLX2MQTT arbeitet bewusst eventbasiert. Wenn keine Positionsupdates kommen:
 
 Beim Wechsel von `topic_identifier = name` auf `node_id` oder umgekehrt können alte retained Topics im Broker verbleiben.
 
+
+## Lange SSL-/KLF-Tracebacks im Log
+
+Aktuelle Versionen begrenzen die Regen-/Limitation-Abfrage mit:
+
+```ini
+rain_read_timeout = 15.0
+```
+
+Bei `verbose = 0` werden bekannte KLF-/pyvlx-Netzwerkfehler kompakt geloggt. Für vollständige Stacktraces `verbose = 1` aktivieren.
+
+Wenn im Log steht:
+
+```text
+rain poll skipped: external recovery waiting
+```
+
+ist das korrekt: Während `recovery/state=waiting` oder `requested` wird Rain-Polling bei `rain_skip_during_recovery = true` pausiert.
+
 ## Recovery löst nicht aus
 
 Prüfen:

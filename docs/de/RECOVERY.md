@@ -67,6 +67,8 @@ external_recovery_enabled = false
 external_recovery_threshold = 4
 runtime_recovery_command_weight = 2
 runtime_recovery_rain_weight = 1
+rain_read_timeout = 15.0
+rain_skip_during_recovery = true
 external_recovery_cooldown = 1800
 external_recovery_grace = 120
 external_recovery_topic = vlx2mqtt/recovery/powercycle_required
@@ -97,11 +99,11 @@ waiting=2
 Wenn `external_recovery_enabled = true` gesetzt ist, der gewichtete Fehlerzähler den Schwellwert erreicht und kein Cooldown aktiv ist, publiziert VLX2MQTT:
 
 ```text
-<root_topic>/recovery/powercycle_required = true
-<root_topic>/recovery/state = requested
-<root_topic>/recovery/state_code = 1
-<root_topic>/recovery/reason = <klf_state>
-<root_topic>/recovery/reason_code = <code>
+/recovery/powercycle_required = true
+/recovery/state = requested
+/recovery/state_code = 1
+/recovery/reason = <KLF-Fehlergrund>
+/recovery/reason_code = <numerischer Grund>
 ```
 
 ## Ablauf mit aktivem Cooldown
@@ -109,16 +111,20 @@ Wenn `external_recovery_enabled = true` gesetzt ist, der gewichtete Fehlerzähle
 Wenn der Schwellwert erreicht ist, aber `external_recovery_cooldown` noch aktiv ist, wird **kein sofortiger Power-Cycle** angefordert. Stattdessen geht VLX2MQTT in den Zustand `waiting`:
 
 ```text
-<root_topic>/recovery/powercycle_required = false
-<root_topic>/recovery/state = waiting
-<root_topic>/recovery/state_code = 2
-<root_topic>/recovery/reason = <klf_state>
-<root_topic>/recovery/reason_code = <code>
+/recovery/powercycle_required = false
+/recovery/state = waiting
+/recovery/state_code = 2
+/recovery/reason = <KLF-Fehlergrund>
+/recovery/reason_code = <numerischer Grund>
 ```
 
-Nach Ablauf des Cooldowns wird automatisch `powercycle_required=true` gesetzt, wenn die KLF200 weiterhin nicht verbunden ist.
+Nach Ablauf des Cooldowns wird automatisch `powercycle_required=true` gesetzt, wenn die KLF200 weiterhin nicht verbunden ist. Wenn die KLF200 vor Ablauf des Cooldowns wieder verbunden ist, wird der Waiting-Zustand automatisch gelöscht.
 
-Wenn die KLF200 vor Ablauf des Cooldowns wieder verbunden ist, wird der Waiting-Zustand automatisch gelöscht.
+## Runtime-Recovery Log-Cleanup
+
+Während `recovery/state=requested` oder `recovery/state=waiting` wird Rain-Polling bei `rain_skip_during_recovery = true` übersprungen. Dadurch werden während einer bekannten KLF-Störung keine zusätzlichen Limitation-Abfragen gegen die KLF gesendet.
+
+`rain_read_timeout` begrenzt eine einzelne Regen-/Limitation-Abfrage. Bekannte KLF-/pyvlx-Netzwerkfehler werden bei `verbose = 0` kompakt ohne langen Stacktrace geloggt. Bei `verbose = 1` bleiben vollständige Stacktraces verfügbar.
 
 ## Empfehlung
 

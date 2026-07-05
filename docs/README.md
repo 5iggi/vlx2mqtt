@@ -94,6 +94,7 @@ ZIP
 | Numeric `*_code` topics | [DE](de/MQTT_TOPICS.md) / [EN](en/MQTT_TOPICS.md) |
 | Loxone XML export | [DE](de/LOXONE.md) / [EN](en/LOXONE.md) |
 | Recovery / power cycle | [DE](de/RECOVERY.md) / [EN](en/RECOVERY.md) |
+| Runtime recovery log cleanup | [DE](de/TROUBLESHOOTING.md) / [EN](en/TROUBLESHOOTING.md) |
 | Service and diagnostics | [DE](de/TROUBLESHOOTING.md) / [EN](en/TROUBLESHOOTING.md) |
 
 ## Repository structure

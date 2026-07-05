@@ -103,6 +103,8 @@ verbose = 0
 logfile = /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 topic_identifier = name
 rain_poll_interval = 300
+rain_read_timeout = 15.0
+rain_skip_during_recovery = true
 publish_rain_raw_limit = false
 event_monitor_interval = 60
 event_stale_warn_seconds = 900
@@ -134,6 +136,8 @@ preventive_recovery_hours = 0
 | `logfile` | Path to the log file |
 | `topic_identifier` | MQTT identifier per node: `name` or `node_id` |
 | `rain_poll_interval` | Polling interval for indirect rain state in seconds |
+| `rain_read_timeout` | Timeout per rain/limitation read; prevents long KLF/SSL hangs in normal logs |
+| `rain_skip_during_recovery` | Skips rain polling while `recovery/state=requested` or `waiting` |
 | `publish_rain_raw_limit` | Additionally publishes `rain_raw_limit` |
 | `event_monitor_interval` | Diagnostic interval for checking KLF node events |
 | `event_stale_warn_seconds` | Warning threshold if no KLF node events arrive |
@@ -151,7 +155,7 @@ The LoxBerry web interface provides:
 - KLF configuration
 - MQTT configuration
 - topic identifier selection
-- rain polling settings
+- rain polling settings including `rain_read_timeout` and recovery skip
 - recovery settings
 - event monitor diagnostics
 - service actions: Restart, Stop, Show log
@@ -240,7 +244,7 @@ ZIP                all files together
 
 ## Rain state
 
-For supported windows, VLX2MQTT can publish an indirect rain state.
+For supported windows, VLX2MQTT can publish an indirect rain state. The read uses `rain_read_timeout` so a hanging KLF/SSL connection does not block for a long time. During external recovery (`requested` or `waiting`), rain polling can be paused with `rain_skip_during_recovery = true`.
 
 ```text
 <root_topic>/<node>/rain
@@ -248,6 +252,9 @@ For supported windows, VLX2MQTT can publish an indirect rain state.
 ```
 
 ## Logging
+
+With `verbose = 0`, known KLF/pyvlx network failures are logged in compact form. Full stack traces remain available with `verbose = 1`.
+
 
 ```text
 /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log

@@ -89,6 +89,25 @@ VLX2MQTT intentionally works event-driven. If no position updates arrive:
 
 When switching from `topic_identifier = name` to `node_id` or vice versa, old retained topics may remain in the broker.
 
+
+## Long SSL/KLF tracebacks in the log
+
+Current versions limit the rain/limitation read with:
+
+```ini
+rain_read_timeout = 15.0
+```
+
+With `verbose = 0`, known KLF/pyvlx network failures are logged in compact form. Enable `verbose = 1` for full stack traces.
+
+If the log contains:
+
+```text
+rain poll skipped: external recovery waiting
+```
+
+this is expected: while `recovery/state=waiting` or `requested`, rain polling is paused if `rain_skip_during_recovery = true`.
+
 ## Recovery does not trigger
 
 Check:
