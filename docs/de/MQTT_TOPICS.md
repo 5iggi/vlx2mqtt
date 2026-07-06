@@ -215,11 +215,26 @@ Wenn `rain_skip_during_recovery = true` gesetzt ist, wird Rain-Polling während 
 
 ```text
 <root_topic>/recovery/powercycle_required
+<root_topic>/recovery/powercycle_required_code
 <root_topic>/recovery/reason
 <root_topic>/recovery/reason_code
 <root_topic>/recovery/failure_count
 <root_topic>/recovery/state
 <root_topic>/recovery/state_code
+```
+
+### `recovery/powercycle_required_code`
+
+Gehört zu:
+
+```text
+<root_topic>/recovery/powercycle_required
+<root_topic>/recovery/powercycle_required_code
+```
+
+```text
+power-cycle required=0
+power-cycle required=1
 ```
 
 ### `recovery/state_code`
