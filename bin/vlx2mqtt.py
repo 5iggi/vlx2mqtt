@@ -1120,6 +1120,12 @@ def publish_recovery_status():
             retain=True,
         )
         mqtt_publish_if_changed(
+            f"{CFG['root_topic']}/recovery/powercycle_required_code",
+            1 if RECOVERY_REQUESTED else 0,
+            qos=1,
+            retain=True,
+        )
+        mqtt_publish_if_changed(
             f"{CFG['root_topic']}/recovery/reason",
             "none" if RECOVERY_REASON is None else str(RECOVERY_REASON),
             qos=1,
@@ -1270,6 +1276,7 @@ def publish_bridge_status():
             retain=True,
         )
 
+        recovery_reason_for_health = RECOVERY_REASON if RECOVERY_REQUESTED else (RECOVERY_WAITING_REASON if RECOVERY_WAITING else None)
         health = {
             "status": overall_status,
             "status_code": state_code(overall_status, STATUS_CODE_MAP, 0),
@@ -1285,10 +1292,11 @@ def publish_bridge_status():
             "last_klf_ok_ts": LAST_KLF_OK_TS,
             "klf_reconnect_in": KLF_RECONNECT_IN,
             "recovery_requested": RECOVERY_REQUESTED,
+            "recovery_powercycle_required_code": 1 if RECOVERY_REQUESTED else 0,
             "recovery_waiting": RECOVERY_WAITING,
             "recovery_waiting_until": RECOVERY_WAITING_UNTIL,
-            "recovery_reason": RECOVERY_REASON if RECOVERY_REQUESTED else (RECOVERY_WAITING_REASON if RECOVERY_WAITING else None),
-            "recovery_reason_code": state_code(RECOVERY_REASON, RECOVERY_REASON_CODE_MAP, 99),
+            "recovery_reason": recovery_reason_for_health,
+            "recovery_reason_code": state_code(recovery_reason_for_health, RECOVERY_REASON_CODE_MAP, 0),
             "failure_count": KLF_REFUSED_COUNT,
         }
         mqtt_publish_if_changed(
@@ -1317,6 +1325,12 @@ def publish_recovery_status():
         mqtt_publish_if_changed(
             CFG["external_recovery_topic"],
             "true" if RECOVERY_REQUESTED else "false",
+            qos=1,
+            retain=True,
+        )
+        mqtt_publish_if_changed(
+            f"{CFG['root_topic']}/recovery/powercycle_required_code",
+            1 if RECOVERY_REQUESTED else 0,
             qos=1,
             retain=True,
         )
