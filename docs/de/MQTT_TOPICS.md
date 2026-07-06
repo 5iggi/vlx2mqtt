@@ -233,7 +233,7 @@ Gehört zu:
 ```
 
 ```text
-power-cycle required=0
+no power-cycle required=0
 power-cycle required=1
 ```
 
