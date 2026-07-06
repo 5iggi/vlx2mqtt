@@ -214,11 +214,26 @@ If `rain_skip_during_recovery = true` is set, rain polling is skipped while `rec
 
 ```text
 <root_topic>/recovery/powercycle_required
+<root_topic>/recovery/powercycle_required_code
 <root_topic>/recovery/reason
 <root_topic>/recovery/reason_code
 <root_topic>/recovery/failure_count
 <root_topic>/recovery/state
 <root_topic>/recovery/state_code
+```
+
+### `recovery/powercycle_required_code`
+
+Belongs to:
+
+```text
+<root_topic>/recovery/powercycle_required
+<root_topic>/recovery/powercycle_required_code
+```
+
+```text
+power-cycle required=0
+power-cycle required=1
 ```
 
 ### `recovery/state_code`
