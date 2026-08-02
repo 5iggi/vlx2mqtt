@@ -707,8 +707,12 @@ if ($cgi->param('save')) {
     $newcfg{'vlx2mqtt.runtime_recovery_rain_weight'} = trim($cgi->param('runtime_recovery_rain_weight')) || '1';
     $newcfg{'vlx2mqtt.external_recovery_cooldown'} = trim($cgi->param('external_recovery_cooldown'));
     $newcfg{'vlx2mqtt.external_recovery_grace'} = trim($cgi->param('external_recovery_grace'));
+    # Recovery topic is no longer editable in the frontend. Preserve an existing
+    # custom value and only fall back to the default if nothing exists yet.
     $newcfg{'vlx2mqtt.external_recovery_topic'} =
-        trim($cgi->param('external_recovery_topic')) || 'vlx2mqtt/recovery/powercycle_required';
+        trim($cgi->param('external_recovery_topic'))
+        || trim($cfg->{'vlx2mqtt.external_recovery_topic'})
+        || 'vlx2mqtt/recovery/powercycle_required';
     $newcfg{'vlx2mqtt.preventive_recovery_hours'} = trim($cgi->param('preventive_recovery_hours'));
 
     my $validation_error = validate_config(\%newcfg);
@@ -792,7 +796,7 @@ $template->param(
 my $plugintitle  = 'VLX2MQTT KLF200 Bridge';
 my $helplink     = $doc_link;
 my $helptemplate = 'help.html';
-our $htmlhead = "<link rel=\"stylesheet\" href=\"/plugins/vlx2mqtt/css/vlx2mqtt.css?v=101\">\n";
+our $htmlhead = "<link rel=\"stylesheet\" href=\"/plugins/vlx2mqtt/css/vlx2mqtt.css?v=103\">\n";
 
 LoxBerry::Web::lbheader($plugintitle, $helplink, $helptemplate);
 print $template->output();
