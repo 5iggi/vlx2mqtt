@@ -389,7 +389,10 @@ sub build_viu_xml {
         my $t = $n->{title};
         $x .= viu_cmd(title=>"${t}_Position", check=>"MQTT:\\i$root/$tid/position=\\i\\v", analog=>1, unit=>'<v>%');
         $x .= viu_cmd(title=>"${t}_Moving", check=>"MQTT:\\i$root/$tid/moving=\\i\\v", analog=>0);
-        $x .= viu_cmd(title=>"${t}_Rain", check=>"MQTT:\\i$root/$tid/rain=\\i\\v", analog=>0) if $n->{rain};
+        if ($n->{rain}) {
+            $x .= viu_cmd(title=>"${t}_Rain", check=>"MQTT:\\i$root/$tid/rain=\\i\\v", analog=>0);
+            $x .= viu_cmd(title=>"${t}_Rain_Code", check=>"MQTT:\\i$root/$tid/rain_code=\\i\\v", analog=>1, unit=>'<v>');
+        }
     }
     $x .= "</VirtualInUdp>\n";
     return $x;
@@ -427,7 +430,7 @@ sub build_export_readme {
     my $tid = $cfg->{'vlx2mqtt.topic_identifier'} || 'name';
     my @nodes = read_nodes_from_mqtt($cfg);
     my $node_txt = join("\n", map { "- $_->{name} (node_id=$_->{id}, topic_id=$_->{topic_id})" } @nodes);
-    return "VLX2MQTT Loxone Config Export\n==============================\n\nExport host: $host\nRoot topic:  $root\nIdentifier:  $tid\n\nIncluded files:\n- VIU_VLX2MQTT.xml: Virtual UDP Input template for values from the MQTT gateway.\n- VO_VLX2MQTT.xml: Virtual Output template for commands to the MQTT gateway.\n\nUse the *_code topics for status values in Loxone wherever possible.\n\nDetected nodes:\n$node_txt\n\nStatus code overview:\n- status_code: ok=1, error=0\n- status_detail_code/status_live_code: klf_connected=1, klf_connecting=2, klf_disconnected=3, klf_unreachable=4, unknown=99\n- service_status_code: running=1, starting=2, stopped/lost/error=0\n- recovery/powercycle_required_code: 0=no power-cycle required, 1=power-cycle required\n- recovery/state_code: idle=0, requested=1, waiting=2\n\nImport VIU_VLX2MQTT.xml as Virtual UDP Inputs and VO_VLX2MQTT.xml as Virtual Outputs.\n";
+    return "VLX2MQTT Loxone Config Export\n==============================\n\nExport host: $host\nRoot topic:  $root\nIdentifier:  $tid\n\nIncluded files:\n- VIU_VLX2MQTT.xml: Virtual UDP Input template for values from the MQTT gateway.\n- VO_VLX2MQTT.xml: Virtual Output template for commands to the MQTT gateway.\n\nUse the *_code topics for status values in Loxone wherever possible.\n\nDetected nodes:\n$node_txt\n\nStatus code overview:\n- status_code: ok=1, error=0\n- status_detail_code/status_live_code: klf_connected=1, klf_connecting=2, klf_disconnected=3, klf_unreachable=4, unknown=99\n- service_status_code: running=1, starting=2, stopped/lost/error=0\n- recovery/powercycle_required_code: 0=no power-cycle required, 1=power-cycle required\n- recovery/state_code: idle=0, requested=1, waiting=2\n- <node>/rain_code: 0=no rain, 1=rain\n\nImport VIU_VLX2MQTT.xml as Virtual UDP Inputs and VO_VLX2MQTT.xml as Virtual Outputs.\n";
 }
 
 
@@ -704,11 +707,8 @@ if ($cgi->param('save')) {
     $newcfg{'vlx2mqtt.runtime_recovery_rain_weight'} = trim($cgi->param('runtime_recovery_rain_weight')) || '1';
     $newcfg{'vlx2mqtt.external_recovery_cooldown'} = trim($cgi->param('external_recovery_cooldown'));
     $newcfg{'vlx2mqtt.external_recovery_grace'} = trim($cgi->param('external_recovery_grace'));
-    # Recovery topic is intentionally not editable in the frontend.
-    # Preserve an existing value from the config and fall back to the default only if missing.
-    my $submitted_recovery_topic = trim($cgi->param('external_recovery_topic'));
     $newcfg{'vlx2mqtt.external_recovery_topic'} =
-        $submitted_recovery_topic || $cfg->{'vlx2mqtt.external_recovery_topic'} || $DEFAULTS{'vlx2mqtt.external_recovery_topic'};
+        trim($cgi->param('external_recovery_topic')) || 'vlx2mqtt/recovery/powercycle_required';
     $newcfg{'vlx2mqtt.preventive_recovery_hours'} = trim($cgi->param('preventive_recovery_hours'));
 
     my $validation_error = validate_config(\%newcfg);
@@ -792,7 +792,7 @@ $template->param(
 my $plugintitle  = 'VLX2MQTT KLF200 Bridge';
 my $helplink     = $doc_link;
 my $helptemplate = 'help.html';
-our $htmlhead = "<link rel=\"stylesheet\" href=\"/plugins/vlx2mqtt/css/vlx2mqtt.css?v=102\">\n";
+our $htmlhead = "<link rel=\"stylesheet\" href=\"/plugins/vlx2mqtt/css/vlx2mqtt.css?v=101\">\n";
 
 LoxBerry::Web::lbheader($plugintitle, $helplink, $helptemplate);
 print $template->output();
