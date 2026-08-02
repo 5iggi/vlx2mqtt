@@ -26,13 +26,6 @@ This file describes the most important MQTT topics of VLX2MQTT.
 <node>         device name or node_id, depending on topic_identifier
 ```
 
-Examples:
-
-```text
-vlx2mqtt/Fenster_links/position
-vlx2mqtt/0/position
-```
-
 ## Status and diagnostic topics
 
 ```text
@@ -49,10 +42,51 @@ vlx2mqtt/0/position
 <root_topic>/health
 ```
 
-## Numeric status codes
+## Node topics
 
-The `*_code` topics provide numeric values for Loxone and other visualizations.  
-The corresponding text topics are still published as well.
+```text
+<root_topic>/<node>/position
+<root_topic>/<node>/moving
+<root_topic>/<node>/set
+<root_topic>/<node>/rain
+<root_topic>/<node>/rain_code
+<root_topic>/<node>/rain_raw_limit
+```
+
+## Control via MQTT
+
+```text
+<root_topic>/<node>/set = UP
+<root_topic>/<node>/set = DOWN
+<root_topic>/<node>/set = OPEN
+<root_topic>/<node>/set = CLOSE
+<root_topic>/<node>/set = STOP
+<root_topic>/<node>/set = 0..100
+```
+
+Examples:
+
+```text
+vlx2mqtt/Fenster_links/set = DOWN
+vlx2mqtt/Fenster_links/set = STOP
+vlx2mqtt/Fenster_links/set = 65
+```
+
+## Recovery topics
+
+```text
+<root_topic>/recovery/powercycle_required
+<root_topic>/recovery/powercycle_required_code
+<root_topic>/recovery/reason
+<root_topic>/recovery/reason_code
+<root_topic>/recovery/failure_count
+<root_topic>/recovery/state
+<root_topic>/recovery/state_code
+```
+
+## Numeric codes
+
+The `*_code` topics provide numeric values for Loxone and other visualizations. The corresponding text topics remain available as well.
 
 ### `status_code`
 
@@ -77,8 +111,6 @@ Belongs to:
 <root_topic>/status_detail_code
 ```
 
-`status_detail` is the stable detailed status. If the service is running, the value usually corresponds to the KLF status. If the service is not running or is starting, the value may be service-related.
-
 ```text
 klf_connected=1
 klf_connecting=2
@@ -89,11 +121,6 @@ klf_auth_failed=6
 klf_error=7
 starting=8
 unknown=99
-service_running=1
-service_starting=2
-service_stopped=0
-service_lost=0
-service_error=0
 ```
 
 ### `status_live_code`
@@ -104,8 +131,6 @@ Belongs to:
 <root_topic>/status_live
 <root_topic>/status_live_code
 ```
-
-`status_live` is the raw live status of the KLF connection.
 
 ```text
 klf_connected=1
@@ -137,89 +162,25 @@ error=0
 unknown=99
 ```
 
-## Node topics
+### `<node>/rain_code`
+
+Belongs to:
 
 ```text
-<root_topic>/<node>/position
-<root_topic>/<node>/moving
-<root_topic>/<node>/set
 <root_topic>/<node>/rain
-<root_topic>/<node>/rain_raw_limit
+<root_topic>/<node>/rain_code
 ```
-
-### `position`
-
-Current position of the device in percent.
 
 ```text
-0..100
+false=0
+true=1
 ```
 
-### `moving`
-
-Derived movement status.
+Meaning:
 
 ```text
-true
-false
-```
-
-### `rain`
-
-Indirect rain status for supported windows.
-
-```text
-true
-false
-```
-
-### `rain_raw_limit`
-
-Optional raw value of the indirect rain detection. It is only published if `publish_rain_raw_limit = true` is set.
-
-## Control via MQTT
-
-```text
-<root_topic>/<node>/set = UP
-<root_topic>/<node>/set = DOWN
-<root_topic>/<node>/set = OPEN
-<root_topic>/<node>/set = CLOSE
-<root_topic>/<node>/set = STOP
-<root_topic>/<node>/set = 0..100
-```
-
-Examples:
-
-```text
-vlx2mqtt/Fenster_links/set = DOWN
-vlx2mqtt/Fenster_links/set = STOP
-vlx2mqtt/Fenster_links/set = 65
-```
-
-
-## Rain polling and log cleanup
-
-The indirect rain/limitation read also supports these configuration values:
-
-```ini
-rain_read_timeout = 15.0
-rain_skip_during_recovery = true
-```
-
-`rain_read_timeout` limits one KLF/pyvlx limitation read. Known KLF/network failures are logged in compact form with `verbose = 0`; full stack traces remain available with `verbose = 1`.
-
-If `rain_skip_during_recovery = true` is set, rain polling is skipped while `recovery/state=requested` or `recovery/state=waiting`.
-
-## Recovery topics
-
-```text
-<root_topic>/recovery/powercycle_required
-<root_topic>/recovery/powercycle_required_code
-<root_topic>/recovery/reason
-<root_topic>/recovery/reason_code
-<root_topic>/recovery/failure_count
-<root_topic>/recovery/state
-<root_topic>/recovery/state_code
+0 = no rain
+1 = rain detected
 ```
 
 ### `recovery/powercycle_required_code`
@@ -232,8 +193,15 @@ Belongs to:
 ```
 
 ```text
-no power-cycle required=0
-power-cycle required=1
+false=0
+true=1
+```
+
+Meaning:
+
+```text
+0 = no power-cycle required
+1 = power-cycle required
 ```
 
 ### `recovery/state_code`
@@ -274,47 +242,11 @@ preventive_interval=10
 unknown=99
 ```
 
-`preventive_interval` is the currently published recovery reason if preventive recovery was triggered by `preventive_recovery_hours`. `preventive_recovery` remains documented as a compatible alias with the same code.
-
-### Runtime recovery weights
-
-During normal operation, recovery-relevant failures are counted with weights:
-
-```ini
-runtime_recovery_command_weight = 2
-runtime_recovery_rain_weight = 1
-```
-
-By default, a failed movement / position command counts `+2`, while a failed rain / limitation read after retry counts `+1`.
-
-### `recovery/state = waiting`
-
-`waiting` means: the recovery threshold has been reached, but `external_recovery_cooldown` is still active. During this state, `powercycle_required=false`. After the cooldown has elapsed, `powercycle_required=true` is set automatically if the KLF is still not connected.
+`preventive_interval` is the currently published recovery reason when preventive recovery is triggered by `preventive_recovery_hours`. `preventive_recovery` remains documented as a compatible alias with the same code.
 
 ## Health JSON
 
-`<root_topic>/health` contains a JSON summary with status, service state, KLF state, recovery information and counters.
-
-Example:
-
-```json
-{
-  "status": "ok",
-  "status_code": 1,
-  "status_detail": "klf_connected",
-  "status_detail_code": 1,
-  "status_live": "klf_connected",
-  "status_live_code": 1,
-  "service_state": "running",
-  "service_status_code": 1,
-  "recovery_requested": false,
-  "recovery_waiting": false,
-  "recovery_waiting_until": null,
-  "recovery_reason": null,
-  "recovery_reason_code": 0,
-  "failure_count": 0
-}
-```
+`<root_topic>/health` contains a JSON summary with status, service state, KLF state, recovery information, status codes and counters.
 
 ---
 

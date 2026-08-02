@@ -28,108 +28,70 @@ README_Loxone_Export.txt
 VLX2MQTT_Loxone_Templates.zip
 ```
 
-## `VIU_VLX2MQTT.xml`
-
-Virtuelle UDP-Eingänge für Loxone Config.
-
-Enthält typischerweise:
-
-```text
-Position
-Moving
-Rain
-status_code
-status_detail_code
-status_live_code
-service_status_code
-recovery/state_code
-recovery/reason_code
-```
-
-## `VO_VLX2MQTT.xml`
-
-Virtuelle Ausgänge für Loxone Config.
-
-Enthält pro erkanntem Node Steuerbefehle wie:
-
-```text
-UP
-DOWN
-STOP
-SET 0..100
-```
-
-## Import in Loxone Config
+## Verwendung
 
 1. VLX2MQTT-Weboberfläche öffnen.
 2. Bereich **Loxone Config Export** öffnen.
-3. `VirtualInUdp XML` herunterladen.
-4. In Loxone Config als virtuelle UDP-Eingänge importieren.
-5. `VirtualOut XML` herunterladen.
-6. In Loxone Config als virtuelle Ausgänge importieren.
-7. Optional README herunterladen und prüfen.
+3. `VIU_VLX2MQTT.xml` für virtuelle UDP-Eingänge herunterladen und in Loxone Config importieren.
+4. `VO_VLX2MQTT.xml` für virtuelle Ausgänge herunterladen und in Loxone Config importieren.
+5. Optional `README_Loxone_Export.txt` oder das ZIP herunterladen.
 
-## Empfohlene Status-Topics für Loxone
+## Empfohlene Topics für Loxone
 
-```text
-vlx2mqtt/status_code
-vlx2mqtt/status_detail_code
-vlx2mqtt/status_live_code
-vlx2mqtt/service_status_code
-vlx2mqtt/recovery/state_code
-vlx2mqtt/recovery/reason_code
-```
-
-Beispiel:
+Für Loxone-Integrationen werden die numerischen `*_code` Topics empfohlen. Sie liefern stabile Zahlenwerte und eignen sich besser für Logik und Statusbausteine als reine Text-/Boolean-Werte.
 
 ```text
-vlx2mqtt/status_live      = klf_connected
-vlx2mqtt/status_live_code = 1
+<root_topic>/status_code
+<root_topic>/status_detail_code
+<root_topic>/status_live_code
+<root_topic>/service_status_code
+<root_topic>/recovery/powercycle_required_code
+<root_topic>/recovery/state_code
+<root_topic>/recovery/reason_code
+<root_topic>/<node>/rain_code
 ```
 
-## Statuscode-Übersicht
+## Power-Cycle Anforderung
+
+Für die externe Steckdose wird empfohlen:
 
 ```text
-ok=1
-error=0
-
-klf_connected=1
-klf_connecting=2
-klf_disconnected=3
-klf_unreachable=4
-klf_connection_refused=5
-klf_auth_failed=6
-klf_error=7
-starting=8
-unknown=99
-
-running=1
-starting=2
-stopped=0
-lost=0
-error=0
-
-idle=0
-requested=1
-waiting=2
+<root_topic>/recovery/powercycle_required_code
 ```
-
-## Textwerte und Statuscodes
-
-Für neue Loxone-Integrationen werden die numerischen `*_code` Topics empfohlen. Textwerte wie `klf_connected` bleiben zusätzlich erhalten und können weiterhin für Diagnose oder eigene Logik verwendet werden.
-
-## UDP-Ports
 
 ```text
-Virtual UDP Inputs: 11883
-Virtual Outputs:    11884
+0 = kein Power-Cycle erforderlich
+1 = Power-Cycle erforderlich
 ```
 
-## Hinweise
+Das bestehende Text-/Boolean-Topic bleibt zusätzlich verfügbar:
 
-- Wenn `mqtt_host = 127.0.0.1` oder `localhost` gesetzt ist, verwendet der Export die LoxBerry-IP als Hostadresse.
-- Wird `topic_identifier` geändert, können alte retained Topics im Broker sichtbar bleiben.
-- Nach Änderungen im Plugin sollte der Loxone-Export neu erzeugt und erneut importiert werden.
+```text
+<root_topic>/recovery/powercycle_required = true / false
+```
+
+## Regenstatus
+
+Für Regenlogik in Loxone wird empfohlen:
+
+```text
+<root_topic>/<node>/rain_code
+```
+
+```text
+0 = kein Regen
+1 = Regen erkannt
+```
+
+Das bestehende Text-/Boolean-Topic bleibt zusätzlich verfügbar:
+
+```text
+<root_topic>/<node>/rain = true / false
+```
+
+## Hinweis
+
+Die Boolean-Konvertierung im LoxBerry MQTT Gateway kann weiterhin verwendet werden. Für neue Loxone-Logiken sind die numerischen `*_code` Topics jedoch robuster und eindeutiger.
 
 ---
 

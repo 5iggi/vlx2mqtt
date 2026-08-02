@@ -17,68 +17,13 @@
 
 # Recovery / Power-Cycle
 
-VLX2MQTT kann bei wiederholten KLF-Verbindungsproblemen optional einen externen Recovery-/Power-Cycle-Trigger per MQTT veröffentlichen.
+VLX2MQTT kann bei wiederholten KLF-Verbindungsproblemen eine externe Recovery bzw. einen Power-Cycle anfordern.
 
-## Ziel
-
-Die KLF200 kann in der Praxis nach längerer Laufzeit, nach Netzwerkproblemen oder nach wiederholten Verbindungsversuchen instabil reagieren. VLX2MQTT kann diesen Zustand erkennen und ein MQTT-Topic setzen, das eine externe Automatisierung auswerten kann.
-
-```text
-vlx2mqtt/recovery/powercycle_required = true
-```
-
-Typischer Anwendungsfall: Loxone oder eine andere Automatisierung schaltet daraufhin die externe Stromversorgung der KLF200 kurz aus und wieder ein.
-
-## Wann wird Recovery ausgelöst?
-
-VLX2MQTT unterscheidet zwei Arten von Recovery-relevanten Fehlern:
-
-1. **Connect-/Reconnect-Fehler** beim Start oder beim Wiederverbinden zur KLF200.
-2. **Runtime-Fehler** im laufenden Betrieb, z. B. wenn ein Fahrbefehl oder eine Regen-/Limitation-Abfrage nicht mehr an die KLF200 gesendet werden kann.
-
-Runtime-Fehler werden gewichtet gezählt:
-
-```ini
-runtime_recovery_command_weight = 2
-runtime_recovery_rain_weight = 1
-```
-
-Standardmäßig gilt:
-
-```text
-fehlgeschlagener Fahr-/Positionsbefehl = +2
-fehlgeschlagene Regen-/Limitation-Abfrage nach Retry = +1
-```
-
-Wenn der gewichtete Fehlerzähler `external_recovery_threshold` erreicht und kein Cooldown aktiv ist, wird `powercycle_required=true` veröffentlicht.
-
-## Relevante Fehlerzustände
-
-```text
-klf_connection_refused
-klf_disconnected
-klf_unreachable
-```
-
-## Konfiguration
-
-```ini
-external_recovery_enabled = false
-external_recovery_threshold = 4
-runtime_recovery_command_weight = 2
-runtime_recovery_rain_weight = 1
-rain_read_timeout = 15.0
-rain_skip_during_recovery = true
-external_recovery_cooldown = 1800
-external_recovery_grace = 120
-external_recovery_topic = vlx2mqtt/recovery/powercycle_required
-preventive_recovery_hours = 0
-```
-
-## Topics
+## Recovery-Topics
 
 ```text
 <root_topic>/recovery/powercycle_required
+<root_topic>/recovery/powercycle_required_code
 <root_topic>/recovery/reason
 <root_topic>/recovery/reason_code
 <root_topic>/recovery/failure_count
@@ -86,54 +31,61 @@ preventive_recovery_hours = 0
 <root_topic>/recovery/state_code
 ```
 
-## Statuscodes
+## Power-Cycle Anforderung
 
 ```text
-idle=0
-requested=1
-waiting=2
+<root_topic>/recovery/powercycle_required = true / false
+<root_topic>/recovery/powercycle_required_code = 1 / 0
 ```
-
-## Ablauf ohne aktiven Cooldown
-
-Wenn `external_recovery_enabled = true` gesetzt ist, der gewichtete Fehlerzähler den Schwellwert erreicht und kein Cooldown aktiv ist, publiziert VLX2MQTT:
 
 ```text
-/recovery/powercycle_required = true
-/recovery/state = requested
-/recovery/state_code = 1
-/recovery/reason = <KLF-Fehlergrund>
-/recovery/reason_code = <numerischer Grund>
+0 = kein Power-Cycle erforderlich
+1 = Power-Cycle erforderlich
 ```
 
-## Ablauf mit aktivem Cooldown
+Für Loxone-Logik wird `powercycle_required_code` empfohlen.
 
-Wenn der Schwellwert erreicht ist, aber `external_recovery_cooldown` noch aktiv ist, wird **kein sofortiger Power-Cycle** angefordert. Stattdessen geht VLX2MQTT in den Zustand `waiting`:
+## Recovery-Zustände
 
 ```text
-/recovery/powercycle_required = false
-/recovery/state = waiting
-/recovery/state_code = 2
-/recovery/reason = <KLF-Fehlergrund>
-/recovery/reason_code = <numerischer Grund>
+state=idle       state_code=0
+state=requested  state_code=1
+state=waiting    state_code=2
 ```
 
-Nach Ablauf des Cooldowns wird automatisch `powercycle_required=true` gesetzt, wenn die KLF200 weiterhin nicht verbunden ist. Wenn die KLF200 vor Ablauf des Cooldowns wieder verbunden ist, wird der Waiting-Zustand automatisch gelöscht.
+## Waiting bei aktivem Cooldown
 
-## Runtime-Recovery Log-Cleanup
+Wenn der Schwellwert erreicht ist, aber `external_recovery_cooldown` noch aktiv ist, wird kein sofortiger Power-Cycle ausgelöst. VLX2MQTT veröffentlicht dann:
 
-Während `recovery/state=requested` oder `recovery/state=waiting` wird Rain-Polling bei `rain_skip_during_recovery = true` übersprungen. Dadurch werden während einer bekannten KLF-Störung keine zusätzlichen Limitation-Abfragen gegen die KLF gesendet.
+```text
+<root_topic>/recovery/powercycle_required = false
+<root_topic>/recovery/powercycle_required_code = 0
+<root_topic>/recovery/state = waiting
+<root_topic>/recovery/state_code = 2
+```
 
-`rain_read_timeout` begrenzt eine einzelne Regen-/Limitation-Abfrage. Bekannte KLF-/pyvlx-Netzwerkfehler werden bei `verbose = 0` kompakt ohne langen Stacktrace geloggt. Bei `verbose = 1` bleiben vollständige Stacktraces verfügbar.
+Nach Ablauf des Cooldowns wird automatisch `powercycle_required=true` und `powercycle_required_code=1` gesetzt, wenn die KLF weiterhin nicht verbunden ist.
 
-## Empfehlung
+## Runtime-Recovery
 
-- Externe Recovery nur aktivieren, wenn ein externer Power-Cycle wirklich vorhanden ist.
-- `external_recovery_cooldown` produktiv ausreichend groß wählen, z. B. `1800` Sekunden.
-- Zum Testen kann `external_recovery_cooldown` temporär reduziert werden, z. B. auf `60` Sekunden.
-- `external_recovery_grace` so setzen, dass die KLF nach Power-Cycle wieder vollständig erreichbar ist.
-- Kein KLF-Reboot beim normalen Stop des Dienstes auslösen.
-- Präventive Recovery nur bewusst und konservativ verwenden.
+VLX2MQTT erkennt Recovery-Probleme auf zwei Wegen:
+
+- beim Start oder Reconnect zur KLF200
+- im laufenden Betrieb, wenn Fahrbefehle oder Regen-/Limitation-Abfragen fehlschlagen
+
+Gewichtung im laufenden Betrieb:
+
+```ini
+runtime_recovery_command_weight = 2
+runtime_recovery_rain_weight = 1
+external_recovery_threshold = 4
+```
+
+Ein fehlgeschlagener Fahr-/Positionsbefehl zählt standardmäßig `+2`, eine fehlgeschlagene Regen-/Limitation-Abfrage nach Retry `+1`.
+
+## Rain-Poll während Recovery
+
+Wenn `rain_skip_during_recovery = true` gesetzt ist, wird Rain-Polling während `requested` oder `waiting` pausiert. Dadurch werden unnötige KLF-Zugriffe während einer bekannten Störung reduziert.
 
 ---
 
