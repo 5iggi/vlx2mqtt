@@ -2,9 +2,9 @@
 <div class="vlx-page">
 <form method="post" action="index.cgi">
   <div class="vlx-actions">
-    <a href="javascript:restartService();" id="btnrestart" class="vlx-button"><i class="pi pi-refresh"></i><span><TMPL_VAR UI.RESTART></span></a>
-    <a href="javascript:stopService();" id="btnstop" class="vlx-button vlx-button-danger"><i class="pi pi-stop"></i><span><TMPL_VAR UI.STOP></span></a>
-    <a id="btnshwlog" class="vlx-button" target="log" href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template"><i class="pi pi-file"></i><span><TMPL_VAR UI.SHOW_LOG></span></a>
+    <a data-role="none" href="javascript:restartService();" id="btnrestart" class="vlx-button"><i class="pi pi-refresh"></i><span><TMPL_VAR UI.RESTART></span></a>
+    <a data-role="none" href="javascript:stopService();" id="btnstop" class="vlx-button vlx-button-danger"><i class="pi pi-stop"></i><span><TMPL_VAR UI.STOP></span></a>
+    <a data-role="none" id="btnshwlog" class="vlx-button" target="log" href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template"><i class="pi pi-file"></i><span><TMPL_VAR UI.SHOW_LOG></span></a>
   </div>
 
   <div class="vlx-service-status"><span id="servicestate"><TMPL_VAR UI.STATUS_LOADING></span></div>
@@ -29,7 +29,7 @@
       <div class="vlx-field"><span class="help-inline"><label for="mqtt_pw"><strong><TMPL_VAR UI.MQTT_PW></strong></label><span class="help-tip" title="<TMPL_VAR HELP.MQTT_PW>">?</span></span><input id="mqtt_pw" type="text" name="mqtt_pw" value="<TMPL_VAR mqtt_pw>"></div>
       <div class="vlx-field"><span class="help-inline"><label for="root_topic"><strong><TMPL_VAR UI.ROOT_TOPIC></strong></label><span class="help-tip" title="<TMPL_VAR HELP.ROOT_TOPIC>">?</span></span><input id="root_topic" type="text" name="root_topic" value="<TMPL_VAR root_topic>"></div>
     </div>
-    <p style="margin-top:1em;"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></p>
+    <p style="margin-top:1em;"><button data-role="none" type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></p>
   </div>
 
   <details class="vlx-card vlx-collapsible">
@@ -47,7 +47,7 @@
           </div>
         </div>
       </div>
-      <div class="vlx-panel-actions"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
+      <div class="vlx-panel-actions"><button data-role="none" type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
     </div>
   </details>
 
@@ -58,18 +58,16 @@
       <div class="vlx-grid-2">
         <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="rain_poll_interval"><strong><TMPL_VAR UI.RAIN_POLL_INTERVAL></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RAIN_POLL_INTERVAL>">?</span></span><input id="rain_poll_interval" type="text" name="rain_poll_interval" value="<TMPL_VAR rain_poll_interval>"></div>
         <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="rain_read_timeout"><strong><TMPL_VAR UI.RAIN_READ_TIMEOUT></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RAIN_READ_TIMEOUT>">?</span></span><input id="rain_read_timeout" type="text" name="rain_read_timeout" value="<TMPL_VAR rain_read_timeout>"></div>
-
         <div class="vlx-field vlx-grid-full">
           <div class="vlx-stack">
             <div class="vlx-checkbox-field"><div class="vlx-checkrow"><label for="publish_rain_raw_limit"><input id="publish_rain_raw_limit" type="checkbox" name="publish_rain_raw_limit" value="1" <TMPL_VAR publish_rain_raw_limit_checked>> <TMPL_VAR UI.PUBLISH_RAIN_RAW_LIMIT></label><span class="help-tip" title="<TMPL_VAR HELP.PUBLISH_RAIN_RAW_LIMIT>">?</span></div></div>
             <div class="vlx-checkbox-field"><div class="vlx-checkrow"><label for="rain_skip_during_recovery"><input id="rain_skip_during_recovery" type="checkbox" name="rain_skip_during_recovery" value="1" <TMPL_VAR rain_skip_during_recovery_checked>> <TMPL_VAR UI.RAIN_SKIP_DURING_RECOVERY></label><span class="help-tip" title="<TMPL_VAR HELP.RAIN_SKIP_DURING_RECOVERY>">?</span></div></div>
           </div>
         </div>
-
         <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="event_monitor_interval"><strong><TMPL_VAR UI.EVENT_MONITOR_INTERVAL></strong></label><span class="help-tip" title="<TMPL_VAR HELP.EVENT_MONITOR_INTERVAL>">?</span></span><input id="event_monitor_interval" type="text" name="event_monitor_interval" value="<TMPL_VAR event_monitor_interval>"></div>
         <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="event_stale_warn_seconds"><strong><TMPL_VAR UI.EVENT_STALE_WARN_SECONDS></strong></label><span class="help-tip" title="<TMPL_VAR HELP.EVENT_STALE_WARN_SECONDS>">?</span></span><input id="event_stale_warn_seconds" type="text" name="event_stale_warn_seconds" value="<TMPL_VAR event_stale_warn_seconds>"></div>
       </div>
-      <div class="vlx-panel-actions"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
+      <div class="vlx-panel-actions"><button data-role="none" type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
     </div>
   </details>
 
@@ -85,15 +83,15 @@
         <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="external_recovery_grace"><strong><TMPL_VAR UI.RECOVERY_GRACE></strong></label><span class="help-tip" title="<TMPL_VAR HELP.RECOVERY_GRACE>">?</span></span><input id="external_recovery_grace" type="text" name="external_recovery_grace" value="<TMPL_VAR external_recovery_grace>"></div>
         <div class="vlx-field vlx-narrow"><span class="help-inline"><label for="preventive_recovery_hours"><strong><TMPL_VAR UI.PREVENTIVE_RECOVERY></strong></label><span class="help-tip" title="<TMPL_VAR HELP.PREVENTIVE_RECOVERY>">?</span></span><input id="preventive_recovery_hours" type="text" name="preventive_recovery_hours" value="<TMPL_VAR preventive_recovery_hours>"></div>
       </div>
-      <div class="vlx-panel-actions"><button type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
+      <div class="vlx-panel-actions"><button data-role="none" type="submit" name="save" value="1" class="vlx-button vlx-button-primary"><i class="pi pi-check"></i><span><TMPL_VAR UI.SAVE></span></button></div>
     </div>
   </details>
 
   <details class="vlx-card vlx-collapsible"><summary><span><i class="pi pi-download"></i> <TMPL_VAR UI.SECTION_LOXONE_EXPORT></span></summary>
-    <div class="vlx-panel-body"><p class="vlx-muted"><TMPL_VAR UI.LOXONE_EXPORT_NOTE></p><div class="vlx-export-info">Host: <code><TMPL_VAR LBOX_EXPORT_HOST></code> · VIU: <code><TMPL_VAR LBOX_VIU_PORT></code> · VO: <code><TMPL_VAR LBOX_VO_PORT></code> · Root: <code><TMPL_VAR LBOX_ROOT_TOPIC></code> · Identifier: <code><TMPL_VAR LBOX_TOPIC_IDENTIFIER></code></div><div class="vlx-export-links"><a class="vlx-button" href="index.cgi?download=loxone_viu"><i class="pi pi-download"></i><TMPL_VAR UI.DOWNLOAD_VIU></a><a class="vlx-button" href="index.cgi?download=loxone_vo"><i class="pi pi-download"></i><TMPL_VAR UI.DOWNLOAD_VO></a><a class="vlx-button" href="index.cgi?download=loxone_readme"><i class="pi pi-file"></i><TMPL_VAR UI.DOWNLOAD_README></a><a class="vlx-button" href="index.cgi?download=loxone_zip"><i class="pi pi-box"></i><TMPL_VAR UI.DOWNLOAD_ZIP></a></div></div>
+    <div class="vlx-panel-body"><p class="vlx-muted"><TMPL_VAR UI.LOXONE_EXPORT_NOTE></p><div class="vlx-export-info">Host: <code><TMPL_VAR LBOX_EXPORT_HOST></code> · VIU: <code><TMPL_VAR LBOX_VIU_PORT></code> · VO: <code><TMPL_VAR LBOX_VO_PORT></code> · Root: <code><TMPL_VAR LBOX_ROOT_TOPIC></code> · Identifier: <code><TMPL_VAR LBOX_TOPIC_IDENTIFIER></code></div><div class="vlx-export-links"><a data-role="none" class="vlx-button" href="index.cgi?download=loxone_viu"><i class="pi pi-download"></i><TMPL_VAR UI.DOWNLOAD_VIU></a><a data-role="none" class="vlx-button" href="index.cgi?download=loxone_vo"><i class="pi pi-download"></i><TMPL_VAR UI.DOWNLOAD_VO></a><a data-role="none" class="vlx-button" href="index.cgi?download=loxone_readme"><i class="pi pi-file"></i><TMPL_VAR UI.DOWNLOAD_README></a><a data-role="none" class="vlx-button" href="index.cgi?download=loxone_zip"><i class="pi pi-box"></i><TMPL_VAR UI.DOWNLOAD_ZIP></a></div></div>
   </details>
 
-  <details class="vlx-card vlx-collapsible"><summary><span><i class="pi pi-question-circle"></i> <TMPL_VAR UI.SECTION_DOCUMENTATION></span></summary><div class="vlx-panel-body"><p class="vlx-muted"><TMPL_VAR UI.DOCUMENTATION_TEXT></p><a class="vlx-button" href="<TMPL_VAR DOC_LINK>" target="_blank"><i class="pi pi-external-link"></i><TMPL_VAR UI.OPEN_DOCUMENTATION></a></div></details>
+  <details class="vlx-card vlx-collapsible"><summary><span><i class="pi pi-question-circle"></i> <TMPL_VAR UI.SECTION_DOCUMENTATION></span></summary><div class="vlx-panel-body"><p class="vlx-muted"><TMPL_VAR UI.DOCUMENTATION_TEXT></p><a data-role="none" class="vlx-button" href="<TMPL_VAR DOC_LINK>" target="_blank"><i class="pi pi-external-link"></i><TMPL_VAR UI.OPEN_DOCUMENTATION></a></div></details>
 
   <input id="logfile" type="hidden" name="logfile" value="<TMPL_VAR logfile>">
 </form>
@@ -104,8 +102,8 @@ const I18N = { serviceError: '<TMPL_VAR UI.SERVICE_ERROR>', restarting: '<TMPL_V
 function setServiceState(msg, color, pid, klfStatus) { document.getElementById('servicestate').innerHTML = '<span style="color:' + color + '">' + msg + ' | PID: ' + (pid || '-') + ' | KLF: ' + (klfStatus || I18N.unknown) + '</span>'; }
 function postAjax(body) { return fetch('index.cgi', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body }).then(r => r.json()); }
 function loadServiceStatus() { postAjax('ajax=statusvlx').then(d => { let color = 'gray'; if (d.state === 'active') color = 'green'; if (d.error) color = 'red'; setServiceState(d.message || d.state || I18N.unknown, color, d.pid, d.klf_status); }).catch(() => setServiceState(I18N.serviceError, 'red', '-', I18N.unknown)); }
-function restartService() { setServiceState(I18N.restarting, 'orange', '…', I18N.unknown); postAjax('ajax=restartvlx').then(() => setTimeout(loadServiceStatus, 1500)).catch(() => setServiceState(I18N.restartFailed, 'red', '-', I18N.unknown)); }
-function stopService() { setServiceState(I18N.stopping, 'orange', '…', I18N.unknown); postAjax('ajax=stopvlx').then(() => setTimeout(loadServiceStatus, 1000)).catch(() => setServiceState(I18N.stopFailed, 'red', '-', I18N.unknown)); }
+function restartService() { setServiceState(I18N.restarting, 'orange', '...', I18N.unknown); postAjax('ajax=restartvlx').then(() => setTimeout(loadServiceStatus, 1500)).catch(() => setServiceState(I18N.restartFailed, 'red', '-', I18N.unknown)); }
+function stopService() { setServiceState(I18N.stopping, 'orange', '...', I18N.unknown); postAjax('ajax=stopvlx').then(() => setTimeout(loadServiceStatus, 1000)).catch(() => setServiceState(I18N.stopFailed, 'red', '-', I18N.unknown)); }
 setInterval(loadServiceStatus, 5000);
 document.addEventListener('DOMContentLoaded', loadServiceStatus);
 </script>
