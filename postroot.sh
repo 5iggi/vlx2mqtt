@@ -11,6 +11,7 @@ PTEMPPATH=$6
 PBIN=$LBPBIN/$PDIR
 PCONFIG=$LBPCONFIG/$PDIR
 PDATA=$LBPDATA/$PDIR
+PLOGS=$LBPLOG/$PDIR
 
 VENV="$PDATA/venv"
 SERVICE_FILE="/etc/systemd/system/vlx2mqtt.service"
@@ -46,6 +47,13 @@ echo "<INFO> Installing Python dependencies into virtual environment"
 chown -R loxberry:loxberry "$PDATA" || {
   echo "<WARNING> Could not chown plugin data directory"
 }
+
+echo " Ensuring plugin log file exists"
+mkdir -p "$PLOGS" || true
+touch "$PLOGS/vlx2mqtt.log" 2>/dev/null || echo " Could not create $PLOGS/vlx2mqtt.log"
+chown -R loxberry:loxberry "$PLOGS" 2>/dev/null || true
+chmod 664 "$PLOGS/vlx2mqtt.log" 2>/dev/null || true
+
 
 echo "<INFO> Creating systemd service file"
 cat <<EOT > "$SERVICE_FILE"

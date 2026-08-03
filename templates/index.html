@@ -4,7 +4,7 @@
   <div class="vlx-actions">
     <a data-role="none" href="javascript:restartService();" id="btnrestart" class="vlx-button"><i class="pi pi-refresh"></i><span><TMPL_VAR UI.RESTART></span></a>
     <a data-role="none" href="javascript:stopService();" id="btnstop" class="vlx-button vlx-button-danger"><i class="pi pi-stop"></i><span><TMPL_VAR UI.STOP></span></a>
-    <a data-role="none" id="btnshwlog" class="vlx-button" target="log" href="/admin/system/tools/logfile.cgi?logfile=plugins/vlx2mqtt/vlx2mqtt.log&amp;header=html&amp;format=template"><i class="pi pi-file"></i><span><TMPL_VAR UI.SHOW_LOG></span></a>
+    <a data-role="none" id="btnshwlog" class="vlx-button" target="log" href="index.cgi?showlog=daemon"><i class="pi pi-file"></i><span><TMPL_VAR UI.SHOW_LOG></span></a>
   </div>
 
   <div class="vlx-service-status"><span id="servicestate"><TMPL_VAR UI.STATUS_LOADING></span></div>

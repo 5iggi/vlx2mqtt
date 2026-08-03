@@ -22,6 +22,13 @@ mkdir -p "$PBIN" "$PCONFIG" "$PDATA" "$PLOGS" || {
   exit 2
 }
 
+LOGFILE="$PLOGS/vlx2mqtt.log"
+if [ ! -f "$LOGFILE" ]; then
+  touch "$LOGFILE" 2>/dev/null || echo "<WARNING> Could not create logfile $LOGFILE"
+fi
+chmod 664 "$LOGFILE" 2>/dev/null || true
+
+
 CFGFILE="$PCONFIG/vlx2mqtt.cfg"
 BUNDLED_CFG="$PBIN/../config/vlx2mqtt.cfg"
 BUNDLED_EXAMPLE_CFG="$PBIN/../config/vlx2mqtt_example.cfg"

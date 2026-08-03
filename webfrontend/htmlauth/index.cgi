@@ -14,6 +14,59 @@ use Encode qw(encode decode FB_CROAK);
 use LoxBerry::System;
 use LoxBerry::Web;
 
+
+# Optional LoxBerry session logging for user-triggered web actions.
+# Kept optional so the web frontend still works if the logging module cannot be loaded.
+our ($lbplogdir, $lbpplugindir);
+my $vlx_lb_log_available = eval {
+    require LoxBerry::Log;
+    LoxBerry::Log->import();
+    1;
+};
+my $vlx_lb_log_active = 0;
+
+sub vlx_lb_log_start {
+    my ($name, $title) = @_;
+    return if !$vlx_lb_log_available;
+    eval {
+        my $logdir = $lbplogdir || '/opt/loxberry/log/plugins/vlx2mqtt';
+        my $pkg = $lbpplugindir || 'vlx2mqtt';
+        my $log = LoxBerry::Log->new(
+            name    => $name || 'Admin-UI',
+            package => $pkg,
+            logdir  => $logdir,
+            addtime => 1,
+        );
+        $log->default;
+        main::LOGSTART($title || 'VLX2MQTT Admin-UI');
+        $vlx_lb_log_active = 1;
+    };
+}
+
+sub vlx_lb_log_msg {
+    my ($level, $msg) = @_;
+    return if !$vlx_lb_log_active;
+    $msg = '' if !defined $msg;
+    eval {
+        if ($level && $level eq 'err') {
+            main::LOGERR($msg);
+        } elsif ($level && $level eq 'warn') {
+            main::LOGWARN($msg);
+        } elsif ($level && $level eq 'ok') {
+            main::LOGOK($msg);
+        } else {
+            main::LOGINF($msg);
+        }
+    };
+}
+
+sub vlx_lb_log_end {
+    my ($msg) = @_;
+    return if !$vlx_lb_log_active;
+    eval { main::LOGEND($msg || 'Finished'); };
+    $vlx_lb_log_active = 0;
+}
+
 my $cgi          = CGI->new;
 my $ajax         = $cgi->param('ajax') // '';
 my $download     = $cgi->param('download') // '';
@@ -80,6 +133,40 @@ sub json_out {
     exit;
 }
 
+
+
+sub ensure_daemon_log_file {
+    my ($cfg) = @_;
+    my $logfile = vlx_trim($cfg->{'vlx2mqtt.logfile'} || $default_logfile);
+
+    # The log viewer expects a path below /opt/loxberry/log.
+    # If a custom path points somewhere else, fall back to the plugin default.
+    if ($logfile !~ m{^/opt/loxberry/log/plugins/vlx2mqtt/}) {
+        $logfile = $default_logfile;
+    }
+
+    my ($logdir) = $logfile =~ m{^(.+)/[^/]+$};
+    if ($logdir && !-d $logdir) {
+        eval { make_path($logdir); };
+    }
+
+    if (!-e $logfile) {
+        if (open my $fh, '>>:encoding(UTF-8)', $logfile) {
+            print {$fh} scalar(localtime) . " <INFO> Logfile recreated by VLX2MQTT web frontend for Log Manager display.
+";
+            close $fh;
+            chmod 0664, $logfile;
+        }
+    }
+
+    return $logfile;
+}
+
+sub logfile_relative_to_logroot {
+    my ($logfile) = @_;
+    $logfile =~ s{^/opt/loxberry/log/}{};
+    return $logfile;
+}
 sub load_cfg_hash {
     my ($file) = @_;
     my %cfg = %DEFAULTS;
@@ -217,8 +304,20 @@ sub check_pin_if_supplied {
 
 sub run_service_action {
     my ($action) = @_;
+
+    vlx_lb_log_start('service', "VLX2MQTT service action: $action");
+    vlx_lb_log_msg('inf', "Requested systemd action: $action $service_name");
+
     my $rc = system("sudo systemctl $action $service_name >/dev/null 2>&1");
     my ($active, $pid) = service_status();
+
+    if ($rc == 0) {
+        vlx_lb_log_msg('ok', "systemctl $action finished successfully. state=$active pid=$pid");
+    } else {
+        vlx_lb_log_msg('err', "systemctl $action failed with rc=$rc. state=$active pid=$pid");
+    }
+    vlx_lb_log_end('Service action finished');
+
     return {
         error   => ($rc == 0 ? 0 : 1),
         action  => $action,
@@ -227,7 +326,6 @@ sub run_service_action {
         message => ($rc == 0 ? 'ok' : "$action failed (rc=$rc)"),
     };
 }
-
 sub mqtt_read_topic_once {
     my ($cfg, $topic) = @_;
     return (1, 'Invalid topic', undef) unless defined $topic && $topic ne '';
@@ -616,6 +714,16 @@ sub lang {
 
 my $cfg = load_cfg_hash($config_file);
 ensure_config_file($config_file, $cfg);
+
+if ($cgi->param('showlog')) {
+    my $logfile = ensure_daemon_log_file($cfg);
+    my $rel_logfile = logfile_relative_to_logroot($logfile);
+    vlx_lb_log_start('Admin-UI', 'VLX2MQTT log view requested');
+    vlx_lb_log_msg('inf', "Opening daemon log via LoxBerry Log Manager: $rel_logfile");
+    vlx_lb_log_end('Log view redirect');
+    print $cgi->redirect("/admin/system/tools/logfile.cgi?logfile=$rel_logfile&header=html&format=template");
+    exit;
+}
 my $notice = '';
 my $notice_class = 'notice-info';
 my $notice_visible = 0;
