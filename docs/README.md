@@ -95,6 +95,7 @@ ZIP
 | Loxone XML export | [DE](de/LOXONE.md) / [EN](en/LOXONE.md) |
 | Recovery / power cycle | [DE](de/RECOVERY.md) / [EN](en/RECOVERY.md) |
 | Runtime recovery log cleanup | [DE](de/TROUBLESHOOTING.md) / [EN](en/TROUBLESHOOTING.md) |
+| Log views and LoxBerry log list | [DE](de/README.md#logging) / [EN](en/README.md#logging) |
 | Service and diagnostics | [DE](de/TROUBLESHOOTING.md) / [EN](en/TROUBLESHOOTING.md) |
 
 ## Repository structure

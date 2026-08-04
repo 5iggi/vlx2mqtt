@@ -35,6 +35,37 @@ sudo systemctl restart vlx2mqtt.service
 tail -f /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 ```
 
+## Log view and LoxBerry log list
+
+The web interface provides two different log entry points:
+
+```text
+Show log       -> direct daemon / KLF log vlx2mqtt.log
+LoxBerry logs  -> LoxBerry log list via loglist_html()
+```
+
+`Show log` opens the LoxBerry Log Viewer without `only=once` so auto-scroll can remain active. `LoxBerry logs` uses the LoxBerry-generated log list. This list is not rebuilt by VLX2MQTT as a custom file list.
+
+If `vlx2mqtt.log` does not appear in the LoxBerry log list, the registration can be run manually:
+
+```bash
+sudo /opt/loxberry/bin/plugins/vlx2mqtt/register_daemon_log.sh
+```
+
+Afterwards reload the LoxBerry log page. If the service does not start, also check the systemd unit:
+
+```bash
+systemctl cat vlx2mqtt.service
+```
+
+The service should be started through the wrapper:
+
+```text
+/opt/loxberry/bin/plugins/vlx2mqtt/vlx2mqtt_daemon.pl
+```
+
+The wrapper starts the Python daemon. Log registration is handled by `register_daemon_log.sh` during installation/upgrade or manually during repair, not on every daemon start.
+
 ## Check MQTT
 
 ```bash

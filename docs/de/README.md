@@ -170,9 +170,18 @@ Die LoxBerry-Weboberfläche bietet:
 - Regen-Polling-Einstellungen inkl. `rain_read_timeout` und Recovery-Skip
 - Recovery-Einstellungen
 - Event-Monitor-Diagnose
-- Servicefunktionen: Restart, Stop, Log anzeigen
+- Servicefunktionen: Restart, Stop, Log anzeigen, LoxBerry-Logs
 - Loxone Config Export
 
+
+### Logansichten
+
+Die Weboberfläche unterscheidet zwei Logzugänge:
+
+- **Log anzeigen** öffnet das direkte Daemon-/KLF-Log `vlx2mqtt.log` im LoxBerry Log Viewer.
+- **LoxBerry-Logs** öffnet die von LoxBerry erzeugte Logliste über `showlog=sessions` und `loglist_html()`.
+
+Die LoxBerry-Logliste wird nicht als eigene Dateiliste nachgebaut. Die Ausgabe stammt aus der LoxBerry-Logverwaltung und bleibt deshalb für Collapsible-Bereiche, Log-Level-Auswahl, Sprache und Log-Viewer-Links systemkonform. Systemseitig erzeugte Schaltflächen oder Beschriftungen der LoxBerry-Logliste werden nicht durch VLX2MQTT übersetzt oder mit eigenen Icons überschrieben.
 
 ## index.cgi AJAX-/JSON-Endpunkte
 
@@ -271,6 +280,32 @@ Bei `verbose = 0` werden bekannte KLF-/pyvlx-Netzwerkfehler kompakt geloggt. Vol
 ```text
 /opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
 ```
+
+### Daemon-Log und LoxBerry-Logliste
+
+Das laufende Python-Programm schreibt weiterhin in die feste Logdatei:
+
+```text
+/opt/loxberry/log/plugins/vlx2mqtt/vlx2mqtt.log
+```
+
+Damit diese Datei auch in der LoxBerry-Logliste erscheint, wird sie bei Installation oder Upgrade über das LoxBerry Logging SDK registriert. Die Registrierung erfolgt über:
+
+```text
+/opt/loxberry/bin/plugins/vlx2mqtt/register_daemon_log.sh
+```
+
+Dieses Skript ist kein dauerhaft laufender Dienst. Es dient der Log-Registrierung während Installation/Upgrade und kann bei Bedarf manuell erneut ausgeführt werden, zum Beispiel wenn die LoxBerry-Logdatenbank bereinigt oder neu aufgebaut wurde.
+
+Der systemd-Dienst startet VLX2MQTT über einen kleinen Wrapper:
+
+```text
+/opt/loxberry/bin/plugins/vlx2mqtt/vlx2mqtt_daemon.pl
+```
+
+Der Wrapper hält den Dienststart einheitlich und startet anschließend den Python-Daemon. Die Logregistrierung ist bewusst nicht an jeden Daemon-Start gekoppelt.
+
+Der direkte Daemon-Logviewer wird ohne `only=once` geöffnet, damit die Auto-Scroll-Funktion des LoxBerry Log Viewers erhalten bleibt.
 
 ## Weitere Dokumentation
 
