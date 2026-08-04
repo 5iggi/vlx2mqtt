@@ -22,6 +22,11 @@ import paho.mqtt.client as mqtt
 from pyvlx import OpeningDevice, PyVLX
 from pyvlx.exception import PyVLXException
 
+try:
+    from pyvlx.const import NodeTypeWithSubtype
+except Exception:
+    NodeTypeWithSubtype = None
+
 # ============================================================
 # pyvlx payload patch
 # ============================================================
@@ -583,6 +588,82 @@ def recovery_activity_state() -> Optional[str]:
 
 def should_skip_rain_poll_for_recovery() -> bool:
     return _cfg_bool(CFG.get("rain_skip_during_recovery", True), True) and recovery_activity_state() is not None
+
+
+def get_node_type_for_rain_detection(node) -> Any:
+    """Return the most useful pyvlx node type/subtype if available.
+
+    Some pyvlx versions expose NodeTypeWithSubtype on node.node_type, while
+    other versions only convert the node to a concrete Python class such as
+    Window or RollerShutter and don't keep node_type on the public object.
+    """
+    for attr in ("node_type", "node_type_with_subtype", "type_with_subtype", "type"):
+        try:
+            value = getattr(node, attr, None)
+        except Exception:
+            continue
+        if value is not None:
+            return value
+    return None
+
+
+def node_type_name_for_log(node) -> str:
+    node_type = get_node_type_for_rain_detection(node)
+    if node_type is None:
+        return ""
+    name = getattr(node_type, "name", None)
+    return str(name) if name else str(node_type)
+
+
+def node_may_support_rain(node) -> bool:
+    """Return True only for nodes that may actually provide rain information.
+
+    Important: A readable KLF limitation value alone is not enough. Roller
+    shutters may return a limitation value such as 0, but that must not be
+    published as rain=false/rain_code=0.
+
+    Preferred detection uses pyvlx.const.NodeTypeWithSubtype. If this metadata
+    is not exposed by the installed pyvlx version, fall back to the concrete
+    pyvlx class. In the tested pyvlx runtime, windows are class Window and
+    roller shutters are class RollerShutter.
+    """
+    node_type = get_node_type_for_rain_detection(node)
+
+    if NodeTypeWithSubtype is not None:
+        try:
+            if node_type == NodeTypeWithSubtype.WINDOW_OPENER_WITH_RAIN_SENSOR:
+                return True
+        except Exception:
+            pass
+
+    node_type_text = node_type_name_for_log(node).upper()
+    if "WINDOW_OPENER_WITH_RAIN_SENSOR" in node_type_text:
+        return True
+    if "ROLLER_SHUTTER" in node_type_text:
+        return False
+
+    class_name = type(node).__name__
+    if class_name == "RollerShutter":
+        return False
+    if class_name == "Window":
+        return True
+
+    return False
+
+
+def clear_retained_rain_topics_for_unsupported_node(node, st: dict) -> None:
+    """Clear retained rain topics once for nodes that are not rain-capable.
+
+    This removes stale retained rain/rain_code topics that may have been
+    published by older versions before the rain capability filter existed.
+    """
+    if st.get("rain_topics_cleared_for_unsupported"):
+        return
+    for suffix in ("rain", "rain_code", "rain_raw_limit"):
+        mqtt_publish(build_node_topic(node, suffix), "", qos=1, retain=True)
+    st["rain_topics_cleared_for_unsupported"] = True
+
+
 async def read_rain_state(node) -> tuple[Optional[bool], Optional[int]]:
     """
     Determine rain status indirectly via the opening limit.
@@ -2042,10 +2123,6 @@ async def poll_rain_sensors_once():
         if not isinstance(node, OpeningDevice):
             continue
 
-        # Only poll nodes that can actually provide limitation/rain info
-        if not (hasattr(node, "get_limitation_min") or hasattr(node, "get_limitation")):
-            continue
-
         node_name = getattr(node, "name", "")
         node_id = getattr(node, "node_id", None)
         stkey = get_node_state_key(node)
@@ -2053,6 +2130,27 @@ async def poll_rain_sensors_once():
         st["node_name"] = node_name
         st["node_id"] = node_id
         st["topic_id"] = get_node_topic_id(node)
+
+        if not node_may_support_rain(node):
+            logging.debug(
+                "poll_rain_sensors_once: skip rain poll for %s node_id=%s class=%s node_type=%s (rain not supported)",
+                node_name,
+                node_id,
+                type(node).__name__,
+                node_type_name_for_log(node),
+            )
+            clear_retained_rain_topics_for_unsupported_node(node, st)
+            continue
+
+        # Only poll nodes that can actually provide limitation/rain info
+        if not (hasattr(node, "get_limitation_min") or hasattr(node, "get_limitation")):
+            logging.debug(
+                "poll_rain_sensors_once: skip rain poll for %s node_id=%s class=%s (no limitation method)",
+                node_name,
+                node_id,
+                type(node).__name__,
+            )
+            continue
 
         # Option 2: do not poll rain while the node is moving or very shortly after a command.
         if st.get("moving", False):
@@ -2874,10 +2972,13 @@ async def main():
                 )
 
             logging.debug(
-                "watching node: name=%s node_id=%s topic_id=%s",
+                "watching node: name=%s node_id=%s topic_id=%s class=%s node_type=%s supports_rain=%s",
                 getattr(node, "name", ""),
                 getattr(node, "node_id", None),
                 get_node_topic_id(node),
+                type(node).__name__,
+                node_type_name_for_log(node),
+                node_may_support_rain(node),
             )
 
         try:
