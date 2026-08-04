@@ -55,6 +55,17 @@ chown -R loxberry:loxberry "$PLOGS" 2>/dev/null || true
 chmod 664 "$PLOGS/vlx2mqtt.log" 2>/dev/null || true
 
 
+
+# Register the fixed daemon log once during install/upgrade.
+# The frontend uses LoxBerry loglist_html(); it should not scan log files itself.
+if [ -f "$PBIN/register_daemon_log.sh" ]; then
+  chmod 755 "$PBIN/register_daemon_log.sh" 2>/dev/null || true
+  "$PBIN/register_daemon_log.sh" >/dev/null 2>&1 || true
+fi
+if [ -f "$PBIN/vlx2mqtt_daemon.pl" ]; then
+  chmod 755 "$PBIN/vlx2mqtt_daemon.pl" 2>/dev/null || true
+fi
+
 echo "<INFO> Creating systemd service file"
 cat <<EOT > "$SERVICE_FILE"
 [Unit]
@@ -68,7 +79,7 @@ User=loxberry
 Group=loxberry
 WorkingDirectory=$PBIN
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$VENV/bin/python3 $PBIN/vlx2mqtt.py $PCONFIG/vlx2mqtt.cfg
+ExecStart=$PBIN/vlx2mqtt_daemon.pl $VENV/bin/python3 $PBIN/vlx2mqtt.py $PCONFIG/vlx2mqtt.cfg
 Restart=always
 RestartSec=10
 

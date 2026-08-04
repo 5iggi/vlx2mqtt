@@ -712,16 +712,49 @@ sub lang {
     return maybe_unmangle($val);
 }
 
+
+sub loxberry_loglist_html {
+    my $html = '';
+    eval { $html = LoxBerryWebloglist_html(); };
+    if (!$html) { eval { $html = loglist_html(); }; }
+    if (!$html) { eval { $html = LoxBerry::Web::loglist_html(); }; }
+    if (!$html) {
+        no strict 'refs';
+        if (defined &{"LoxBerryWebloglist_html"}) { eval { $html = &{"LoxBerryWebloglist_html"}(); }; }
+    }
+    return $html || '<div class="notice-info">Noch keine LoxBerry-Logs vorhanden.</div>';
+}
+
+sub vlx_show_lx_logs_page {
+    our $htmlhead;
+    my $plugintitle  = 'VLX2MQTT Logs';
+    my $helplink     = 'https://github.com/5iggi/vlx2mqtt/blob/main/docs/README.md';
+    my $helptemplate = 'help.html';
+    $htmlhead = '' if !defined $htmlhead;
+    $htmlhead .= qq{<link rel="stylesheet" href="/plugins/vlx2mqtt/css/vlx2mqtt.css?v=1043">\n};
+    LoxBerry::Web::lbheader($plugintitle, $helplink, $helptemplate);
+    print qq{<div class="vlx-page">};
+    print qq{<div class="vlx-actions vlx-log-nav"><a class="vlx-button" href="index.cgi" data-role="none"><span class="pi pi-arrow-left"></span> Zur&uuml;ck</a></div>};
+    print qq{<div class="vlx-card vlx-log-card"><h2>LoxBerry-Logs</h2><div class="vlx-loglist">};
+    print loxberry_loglist_html();
+    print qq{</div></div></div>};
+    LoxBerry::Web::lbfooter();
+}
+
 my $cfg = load_cfg_hash($config_file);
 ensure_config_file($config_file, $cfg);
 
 if ($cgi->param('showlog')) {
-    my $logfile = ensure_daemon_log_file($cfg);
-    my $rel_logfile = logfile_relative_to_logroot($logfile);
-    vlx_lb_log_start('Admin-UI', 'VLX2MQTT log view requested');
-    vlx_lb_log_msg('inf', "Opening daemon log via LoxBerry Log Manager: $rel_logfile");
-    vlx_lb_log_end('Log view redirect');
-    print $cgi->redirect("/admin/system/tools/logfile.cgi?logfile=$rel_logfile&header=html&format=template");
+    my $showlog = vlx_trim($cgi->param('showlog') // 'sessions');
+    if ($showlog eq 'daemon') {
+        my $logfile = ensure_daemon_log_file($cfg);
+        my $rel_logfile = logfile_relative_to_logroot($logfile);
+        # No Admin-UI log just because the user opens a log file.
+        # No only=once here, so the LoxBerry Log Viewer auto-scroll remains active.
+        print $cgi->redirect("/admin/system/tools/logfile.cgi?logfile=$rel_logfile&header=html&format=template");
+        exit;
+    }
+    vlx_show_lx_logs_page();
     exit;
 }
 my $notice = '';
@@ -904,7 +937,7 @@ $template->param(
 my $plugintitle  = 'VLX2MQTT KLF200 Bridge';
 my $helplink     = $doc_link;
 my $helptemplate = 'help.html';
-our $htmlhead = qq{<link rel="stylesheet" href="/plugins/vlx2mqtt/css/vlx2mqtt.css?v=1031">
+our $htmlhead = qq{<link rel="stylesheet" href="/plugins/vlx2mqtt/css/vlx2mqtt.css?v=1043">
 };
 LoxBerry::Web::lbheader($plugintitle, $helplink, $helptemplate);
 print $template->output();

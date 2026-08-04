@@ -99,6 +99,17 @@ else
   echo "<INFO> Existing config preserved: $CFGFILE"
 fi
 
+
+# Helper scripts for LoxBerry loglist/daemon wrapper.
+for helper in "$PBIN/register_daemon_log.sh" "$PBIN/vlx2mqtt_daemon.pl"; do
+  if [ -f "$helper" ]; then
+    chmod 755 "$helper" 2>/dev/null || true
+  fi
+done
+if [ -f "$PBIN/register_daemon_log.sh" ]; then
+  "$PBIN/register_daemon_log.sh" >/dev/null 2>&1 || true
+fi
+
 # Python-Skript ausführbar setzen
 if [ -f "$PBIN/vlx2mqtt.py" ]; then
   chmod 755 "$PBIN/vlx2mqtt.py" || {

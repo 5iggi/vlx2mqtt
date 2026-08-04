@@ -1,6 +1,6 @@
 /* ========================================================================
 VLX2MQTT Webfrontend CSS
-Version: 1.0.3
+Version: 1.0.4.c
 
 Ziele:
 - Gleicher Look für LoxBerry v3 und v4 im klassischen jQuery-Mobile-Modus.
@@ -905,7 +905,7 @@ select#topic_identifier {
 }
 
 /* ========================================================================
-VLX2MQTT v1.0.3 final button color overrides
+VLX2MQTT v1.0.4.c final button color overrides
 - Speichern/Primary follows LoxBerry 4 tokens if available.
 - Stop/Danger uses hover-specific token chain so v4 no longer sticks on
   --lb-danger when hovering.
@@ -1003,4 +1003,19 @@ VLX2MQTT v1.0.3 final button color overrides
   color: #fff !important;
   background-image: none !important;
   text-shadow: none !important;
+}
+
+
+/* ========================================================================
+VLX2MQTT v1.0.4.c log page wrapper only
+- LoxBerry-generated loglist_html() output is left untouched.
+- No forced icon injection and no forced Open/Oeffnen translation.
+======================================================================== */
+.vlx-page .vlx-log-nav {
+  margin: .2rem 0 1rem 0;
+  justify-content: center;
+}
+
+.vlx-page .vlx-log-card {
+  background: var(--vlx-card-bg, transparent);
 }
