@@ -713,6 +713,21 @@ sub lang {
 }
 
 
+sub vlx_decode_loxberry_html {
+    my ($html) = @_;
+    return '' if !defined $html;
+
+    # If Perl already treats the string as decoded text, do not touch it.
+    return $html if utf8::is_utf8($html);
+
+    # LoxBerry v3 may return UTF-8 bytes without Perl's UTF-8 flag.
+    my $decoded = eval { decode('UTF-8', $html, FB_CROAK) };
+    return $decoded if !$@ && defined $decoded;
+
+    # Fallback: return unchanged.
+    return $html;
+}
+
 sub loxberry_loglist_html {
     my $html = '';
     eval { $html = LoxBerryWebloglist_html(); };
@@ -722,7 +737,8 @@ sub loxberry_loglist_html {
         no strict 'refs';
         if (defined &{"LoxBerryWebloglist_html"}) { eval { $html = &{"LoxBerryWebloglist_html"}(); }; }
     }
-    return $html || '<div class="notice-info">Noch keine LoxBerry-Logs vorhanden.</div>';
+    $html = '<div class="notice-info">Noch keine LoxBerry-Logs vorhanden.</div>' if !$html;
+    return vlx_decode_loxberry_html($html);
 }
 
 sub vlx_show_lx_logs_page {
