@@ -19,7 +19,8 @@ from logging.handlers import WatchedFileHandler
 from typing import Any, Optional
 
 import paho.mqtt.client as mqtt
-from pyvlx import OpeningDevice, PyVLX
+from pyvlx import OpeningDevice, PyVLX, Light
+from pyvlx.parameter import Intensity
 from pyvlx.exception import PyVLXException
 
 try:
@@ -35,7 +36,13 @@ def apply_pyvlx_patch():
     try:
         from pyvlx.api.frames.frame_command_send import FrameCommandSendRequest
 
+        original_get_payload = FrameCommandSendRequest.get_payload
+
         def patched_get_payload(self):
+            # Preserve the library's full two-byte light parameter. The legacy
+            # shutter workaround below only understands position values.
+            if isinstance(self.parameter, Intensity):
+                return original_get_payload(self)
             assert self.session_id is not None
 
             ret = bytearray()
@@ -220,6 +227,59 @@ LOGFILE = CFG["logfile"]
 # ============================================================
 # Help functions
 # ============================================================
+
+
+def parse_light_command(payload: str) -> int:
+    """Use explicit light semantics; never interpret OPEN/CLOSE as light commands."""
+    value = payload.strip().upper()
+    if value == "ON":
+        return 100
+    if value == "OFF":
+        return 0
+    if not re.fullmatch(r"[0-9]{1,3}", value) or int(value) > 100:
+        raise ValueError("Expected ON, OFF or integer 0..100")
+    return int(value)
+
+
+def light_brightness(node) -> Optional[int]:
+    # KLF main parameter: 0x0000 = full light, 0xC800 = off.
+    # Decode the raw value to avoid version-dependent percent conversions.
+    intensity = getattr(node, "intensity", None)
+    raw = getattr(intensity, "raw", None)
+    if not isinstance(raw, (bytes, bytearray)) or len(raw) != 2:
+        return None
+    value = int.from_bytes(raw, "big")
+    if value > 0xC800:
+        return None  # Unknown/current/other special parameter, not a real level.
+    return round(100 - value * 100 / 0xC800)
+
+
+def publish_light_state(node):
+    st = NODE_STATE.setdefault(get_node_state_key(node), {})
+    st["last_update_ts"] = time.time()
+    level = light_brightness(node)
+    mqtt_publish_if_changed(build_node_topic(node, "type"), "light")
+    if level is None:
+        # Clear stale retained values rather than inventing an OFF state.
+        mqtt_publish_if_changed(build_node_topic(node, "brightness"), "")
+        mqtt_publish_if_changed(build_node_topic(node, "state"), "")
+        return
+    mqtt_publish_if_changed(build_node_topic(node, "brightness"), level)
+    mqtt_publish_if_changed(build_node_topic(node, "state"), "ON" if level else "OFF")
+
+
+async def set_light_brightness(node, brightness: int):
+    label = get_node_topic_id(node)
+    try:
+        # Explicit wire value, independent of pyvlx percent-conversion versions.
+        parameter = Intensity(intensity=(100 - brightness) * 512)
+        await node.set_intensity(parameter, wait_for_completion=False)
+        note_klf_runtime_success(f"command:{label}:light")
+        logging.info("%s light command accepted: %s%% (awaiting device status)", label, brightness)
+    except Exception as exc:
+        logging.exception("Light command failed for %s", label)
+        note_klf_runtime_failure(exc, f"command:{label}:light:{brightness}")
+
 
 def normalize_from_device(raw: Any) -> Optional[int]:
     """Convert raw VELUX values safely to 0..100."""
@@ -540,7 +600,7 @@ def node_matches_identifier(node, identifier: str) -> bool:
 
 def find_node_by_identifier(identifier: str):
     for node in getattr(pyvlx, "nodes", []):
-        if not isinstance(node, OpeningDevice):
+        if not isinstance(node, (OpeningDevice, Light)):
             continue
         if node_matches_identifier(node, identifier):
             return node
@@ -1440,7 +1500,7 @@ def publish_node_metadata():
     """
     try:
         for node in getattr(pyvlx, "nodes", []):
-            if not isinstance(node, OpeningDevice):
+            if not isinstance(node, (OpeningDevice, Light)):
                 continue
 
             node_id = getattr(node, "node_id", None)
@@ -1728,6 +1788,18 @@ def mqtt_on_message(client, userdata, msg):
 
     node_label = st.get("topic_id") or getattr(node, "name", "") or stkey
     value_u = payload.strip().upper()
+
+    if isinstance(node, Light):
+        try:
+            brightness = parse_light_command(payload)
+        except ValueError:
+            logging.warning("Invalid light command for %s: %s (use ON, OFF, 0..100)", node_label, payload)
+            return
+        submit_coro_from_thread(
+            set_light_brightness(node, brightness),
+            description=f"light:{node_label}:{brightness}",
+        )
+        return
 
     try:
         if value_u in ("UP", "OPEN"):
@@ -2251,7 +2323,11 @@ async def publish_initial_snapshot():
     await asyncio.sleep(CFG["initial_delay"])
 
     for node in getattr(pyvlx, "nodes", []):
-        if not isinstance(node, OpeningDevice):
+        if not isinstance(node, (OpeningDevice, Light)):
+            continue
+
+        if isinstance(node, Light):
+            publish_light_state(node)
             continue
 
         try:
@@ -2416,6 +2492,9 @@ async def finalize_stop_after_delay(node, stkey: str, delay: float = 1.5, confir
 # Node-Update-Handler
 # ============================================================
 async def on_node_update(node):
+    if isinstance(node, Light):
+        publish_light_state(node)
+        return
     try:
         stkey = get_node_state_key(node)
         st = NODE_STATE.setdefault(stkey, {})
@@ -2938,7 +3017,7 @@ async def main():
 
         # prepare / monitoring nodes
         for node in pyvlx.nodes:
-            if not isinstance(node, OpeningDevice):
+            if not isinstance(node, (OpeningDevice, Light)):
                 continue
 
             stkey = get_node_state_key(node)
